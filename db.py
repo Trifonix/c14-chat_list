@@ -46,11 +46,50 @@ CREATE INDEX IF NOT EXISTS idx_models_is_active   ON models(is_active);
 CREATE INDEX IF NOT EXISTS idx_results_prompt_id  ON results(prompt_id);
 CREATE INDEX IF NOT EXISTS idx_results_model_id   ON results(model_id);
 CREATE INDEX IF NOT EXISTS idx_results_saved_at   ON results(saved_at);
+
+CREATE TABLE IF NOT EXISTS request_logs (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    model_id         INTEGER REFERENCES models(id) ON DELETE SET NULL,
+    model_name       TEXT    NOT NULL,
+    prompt_text      TEXT    NOT NULL,
+    status           TEXT    NOT NULL CHECK (status IN ('success', 'error')),
+    response_preview TEXT,
+    error_message    TEXT,
+    duration_ms      INTEGER,
+    created_at       TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_request_logs_created_at ON request_logs(created_at);
 """
 
 PROMPT_SORT_COLUMNS = {"id", "created_at", "prompt_text", "tags"}
 MODEL_SORT_COLUMNS = {"id", "name", "api_url", "api_id", "is_active", "model_type"}
 RESULT_SORT_COLUMNS = {"id", "prompt_id", "model_id", "response_text", "saved_at"}
+LOG_SORT_COLUMNS = {"id", "model_name", "status", "duration_ms", "created_at"}
+
+OPENROUTER_MODELS = [
+    (
+        "openai/gpt-4o-mini",
+        "https://openrouter.ai/api/v1/chat/completions",
+        "OPENROUTER_API_KEY",
+        1,
+        "openrouter",
+    ),
+    (
+        "google/gemini-2.0-flash-001",
+        "https://openrouter.ai/api/v1/chat/completions",
+        "OPENROUTER_API_KEY",
+        1,
+        "openrouter",
+    ),
+    (
+        "deepseek/deepseek-chat",
+        "https://openrouter.ai/api/v1/chat/completions",
+        "OPENROUTER_API_KEY",
+        1,
+        "openrouter",
+    ),
+]
 
 
 @dataclass
@@ -82,6 +121,19 @@ class SavedResult:
     model_name: str | None = None
 
 
+@dataclass
+class RequestLog:
+    id: int
+    model_id: int | None
+    model_name: str
+    prompt_text: str
+    status: str
+    response_preview: str | None
+    error_message: str | None
+    duration_ms: int | None
+    created_at: str
+
+
 class Database:
     def __init__(self, db_path: str | Path | None = None) -> None:
         self.db_path = Path(db_path or DEFAULT_DB_PATH)
@@ -95,7 +147,17 @@ class Database:
     def init(self) -> None:
         with self.connect() as conn:
             conn.executescript(SCHEMA_SQL)
+            self._migrate(conn)
             self._seed(conn)
+
+    def _migrate(self, conn: sqlite3.Connection) -> None:
+        conn.executemany(
+            """
+            INSERT OR IGNORE INTO models (name, api_url, api_id, is_active, model_type)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            OPENROUTER_MODELS,
+        )
 
     def _seed(self, conn: sqlite3.Connection) -> None:
         count = conn.execute("SELECT COUNT(*) FROM models").fetchone()[0]
@@ -357,6 +419,66 @@ class Database:
             rows = conn.execute("SELECT key, value FROM settings ORDER BY key").fetchall()
             return {row["key"]: row["value"] or "" for row in rows}
 
+    # --- request logs ---
+
+    def log_request(
+        self,
+        model_id: int | None,
+        model_name: str,
+        prompt_text: str,
+        status: str,
+        response_preview: str | None = None,
+        error_message: str | None = None,
+        duration_ms: int | None = None,
+    ) -> None:
+        preview = (response_preview or "")[:500] or None
+        with self.connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO request_logs (
+                    model_id, model_name, prompt_text, status,
+                    response_preview, error_message, duration_ms
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    model_id,
+                    model_name,
+                    prompt_text,
+                    status,
+                    preview,
+                    error_message,
+                    duration_ms,
+                ),
+            )
+
+    def list_request_logs(
+        self,
+        search: str = "",
+        sort_by: str = "created_at",
+        sort_dir: str = "DESC",
+        limit: int = 200,
+    ) -> list[RequestLog]:
+        column = sort_by if sort_by in LOG_SORT_COLUMNS else "created_at"
+        direction = "DESC" if sort_dir.upper() == "DESC" else "ASC"
+        query = "SELECT * FROM request_logs WHERE 1=1"
+        params: list[Any] = []
+        if search.strip():
+            pattern = f"%{search.strip()}%"
+            query += (
+                " AND (model_name LIKE ? OR prompt_text LIKE ?"
+                " OR IFNULL(error_message, '') LIKE ? OR status LIKE ?)"
+            )
+            params.extend([pattern, pattern, pattern, pattern])
+        query += f" ORDER BY {column} {direction} LIMIT ?"
+        params.append(limit)
+        with self.connect() as conn:
+            rows = conn.execute(query, params).fetchall()
+            return [self._row_to_log(row) for row in rows]
+
+    def clear_request_logs(self) -> None:
+        with self.connect() as conn:
+            conn.execute("DELETE FROM request_logs")
+
     # --- helpers ---
 
     @staticmethod
@@ -389,6 +511,20 @@ class Database:
             saved_at=row["saved_at"],
             prompt_text=row["prompt_text"],
             model_name=row["model_name"],
+        )
+
+    @staticmethod
+    def _row_to_log(row: sqlite3.Row) -> RequestLog:
+        return RequestLog(
+            id=row["id"],
+            model_id=row["model_id"],
+            model_name=row["model_name"],
+            prompt_text=row["prompt_text"],
+            status=row["status"],
+            response_preview=row["response_preview"],
+            error_message=row["error_message"],
+            duration_ms=row["duration_ms"],
+            created_at=row["created_at"],
         )
 
 

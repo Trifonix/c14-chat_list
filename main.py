@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sys
+from pathlib import Path
 
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from PyQt6.QtGui import QFont
@@ -10,6 +11,7 @@ from PyQt6.QtWidgets import (
     QApplication,
     QCheckBox,
     QComboBox,
+    QFileDialog,
     QFormLayout,
     QGroupBox,
     QHBoxLayout,
@@ -28,9 +30,11 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from db import AiModel, Database, Prompt, SavedResult, get_database
+from db import AiModel, Database, Prompt, RequestLog, SavedResult, get_database
+from export_utils import export_json, export_markdown
+from logging_setup import setup_logging
 from models import send_prompt
-from session import ResultSession
+from session import ResultSession, SessionRow
 
 STYLES = """
 QMainWindow, QDialog {
@@ -135,11 +139,13 @@ class SendPromptWorker(QThread):
         prompt_text: str,
         active_models: list[AiModel],
         timeout: float,
+        db: Database,
     ) -> None:
         super().__init__()
         self.prompt_text = prompt_text
         self.active_models = active_models
         self.timeout = timeout
+        self.db = db
 
     def run(self) -> None:
         try:
@@ -147,6 +153,7 @@ class SendPromptWorker(QThread):
                 self.prompt_text,
                 self.active_models,
                 timeout=self.timeout,
+                db=self.db,
             )
             self.finished.emit(responses)
         except Exception as exc:
@@ -197,9 +204,17 @@ class QueryTab(QWidget):
         self.clear_btn = QPushButton("Очистить результаты")
         self.clear_btn.setObjectName("secondaryButton")
         self.clear_btn.clicked.connect(self._clear_session)
+        self.export_md_btn = QPushButton("Экспорт MD")
+        self.export_md_btn.setObjectName("secondaryButton")
+        self.export_md_btn.clicked.connect(lambda: self._export("md"))
+        self.export_json_btn = QPushButton("Экспорт JSON")
+        self.export_json_btn.setObjectName("secondaryButton")
+        self.export_json_btn.clicked.connect(lambda: self._export("json"))
         actions.addWidget(self.send_btn)
         actions.addWidget(self.save_btn)
         actions.addWidget(self.clear_btn)
+        actions.addWidget(self.export_md_btn)
+        actions.addWidget(self.export_json_btn)
         actions.addStretch()
         prompt_layout.addLayout(actions)
         layout.addWidget(prompt_group)
@@ -288,7 +303,9 @@ class QueryTab(QWidget):
         self._refresh_results_table()
         self._set_busy(True, "Отправка запросов в нейросети...")
 
-        self._worker = SendPromptWorker(prompt_text, active_models, self._get_timeout())
+        self._worker = SendPromptWorker(
+            prompt_text, active_models, self._get_timeout(), self.db
+        )
         self._worker.finished.connect(self._on_send_finished)
         self._worker.failed.connect(self._on_send_failed)
         self._worker.start()
@@ -368,6 +385,35 @@ class QueryTab(QWidget):
         self.session.clear()
         self._refresh_results_table()
         self.status_label.setText("Временная таблица очищена")
+
+    def _export(self, fmt: str) -> None:
+        rows = self.session.rows
+        if not rows:
+            QMessageBox.information(self, "Экспорт", "Нет результатов для экспорта.")
+            return
+
+        prompt_text = self.prompt_edit.toPlainText().strip()
+        suffix = "md" if fmt == "md" else "json"
+        filter_map = {
+            "md": "Markdown (*.md)",
+            "json": "JSON (*.json)",
+        }
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Сохранить экспорт",
+            f"chatlist_export.{suffix}",
+            filter_map[fmt],
+        )
+        if not path:
+            return
+
+        content = (
+            export_markdown(prompt_text, rows)
+            if fmt == "md"
+            else export_json(prompt_text, rows)
+        )
+        Path(path).write_text(content, encoding="utf-8")
+        QMessageBox.information(self, "Экспорт", f"Файл сохранён:\n{path}")
 
 
 class PromptsTab(QWidget):
@@ -462,7 +508,7 @@ class ModelFormDialog(QWidget):
         self.url_edit = QLineEdit()
         self.api_id_edit = QLineEdit()
         self.type_combo = QComboBox()
-        self.type_combo.addItems(["openai", "deepseek", "groq"])
+        self.type_combo.addItems(["openrouter", "openai", "deepseek", "groq"])
         self.active_check = QCheckBox("Активна")
         self.active_check.setChecked(True)
 
@@ -662,10 +708,18 @@ class ResultsTab(QWidget):
         self.table.verticalHeader().setVisible(False)
         layout.addWidget(self.table, 1)
 
+        export_md_btn = QPushButton("Экспорт MD")
+        export_md_btn.setObjectName("secondaryButton")
+        export_md_btn.clicked.connect(lambda: self._export_saved("md"))
+        export_json_btn = QPushButton("Экспорт JSON")
+        export_json_btn.setObjectName("secondaryButton")
+        export_json_btn.clicked.connect(lambda: self._export_saved("json"))
         delete_btn = QPushButton("Удалить выбранный")
         delete_btn.setObjectName("dangerButton")
         delete_btn.clicked.connect(self._delete_selected)
         row = QHBoxLayout()
+        row.addWidget(export_md_btn)
+        row.addWidget(export_json_btn)
         row.addWidget(delete_btn)
         row.addStretch()
         layout.addLayout(row)
@@ -705,6 +759,127 @@ class ResultsTab(QWidget):
         ) != QMessageBox.StandardButton.Yes:
             return
         self.db.delete_result(result_id)
+        self.reload()
+
+    def _export_saved(self, fmt: str) -> None:
+        results = self.db.list_results(
+            search=self.search_edit.text(),
+            sort_by=self.sort_combo.currentText(),
+            sort_dir=self.dir_combo.currentText(),
+        )
+        if not results:
+            QMessageBox.information(self, "Экспорт", "Нет сохранённых результатов.")
+            return
+
+        prompt_text = results[0].prompt_text or "Сохранённые результаты"
+        rows = [
+            SessionRow(
+                model_id=result.model_id,
+                model_name=result.model_name or "",
+                response_text=result.response_text,
+                selected=True,
+            )
+            for result in results
+        ]
+        suffix = "md" if fmt == "md" else "json"
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Сохранить экспорт",
+            f"chatlist_saved.{suffix}",
+            "Markdown (*.md)" if fmt == "md" else "JSON (*.json)",
+        )
+        if not path:
+            return
+        content = (
+            export_markdown(prompt_text, rows)
+            if fmt == "md"
+            else export_json(prompt_text, rows)
+        )
+        Path(path).write_text(content, encoding="utf-8")
+        QMessageBox.information(self, "Экспорт", f"Файл сохранён:\n{path}")
+
+
+class LogsTab(QWidget):
+    def __init__(self, db: Database, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.db = db
+        self._build_ui()
+        self.reload()
+
+    def _build_ui(self) -> None:
+        layout = QVBoxLayout(self)
+        filters = QHBoxLayout()
+        self.search_edit = QLineEdit()
+        self.search_edit.setPlaceholderText("Поиск по модели, промту, статусу...")
+        self.search_edit.textChanged.connect(self.reload)
+        filters.addWidget(self.search_edit, 1)
+
+        self.sort_combo = QComboBox()
+        self.sort_combo.addItems(["created_at", "model_name", "status", "duration_ms", "id"])
+        self.sort_combo.currentTextChanged.connect(self.reload)
+        filters.addWidget(QLabel("Сортировка:"))
+        filters.addWidget(self.sort_combo)
+
+        self.dir_combo = QComboBox()
+        self.dir_combo.addItems(["DESC", "ASC"])
+        self.dir_combo.currentTextChanged.connect(self.reload)
+        filters.addWidget(self.dir_combo)
+        layout.addLayout(filters)
+
+        self.table = QTableWidget(0, 7)
+        self.table.setHorizontalHeaderLabels(
+            ["ID", "Дата", "Модель", "Статус", "мс", "Промт", "Ошибка / ответ"]
+        )
+        self.table.horizontalHeader().setSectionResizeMode(5, QHeaderView.ResizeMode.Stretch)
+        self.table.horizontalHeader().setSectionResizeMode(6, QHeaderView.ResizeMode.Stretch)
+        self.table.setAlternatingRowColors(True)
+        self.table.verticalHeader().setVisible(False)
+        layout.addWidget(self.table, 1)
+
+        info = QLabel("Логи также пишутся в файл chatlist.log")
+        info.setStyleSheet("color: #94a3b8;")
+        layout.addWidget(info)
+
+        clear_btn = QPushButton("Очистить логи")
+        clear_btn.setObjectName("dangerButton")
+        clear_btn.clicked.connect(self._clear_logs)
+        row = QHBoxLayout()
+        row.addWidget(clear_btn)
+        row.addStretch()
+        layout.addLayout(row)
+
+    def reload(self) -> None:
+        logs = self.db.list_request_logs(
+            search=self.search_edit.text(),
+            sort_by=self.sort_combo.currentText(),
+            sort_dir=self.dir_combo.currentText(),
+        )
+        self.table.setRowCount(len(logs))
+        for index, log in enumerate(logs):
+            self._set_row(index, log)
+
+    def _set_row(self, index: int, log: RequestLog) -> None:
+        preview = log.error_message or log.response_preview or ""
+        values = [
+            str(log.id),
+            log.created_at,
+            log.model_name,
+            log.status,
+            str(log.duration_ms or ""),
+            log.prompt_text[:120],
+            preview[:200],
+        ]
+        for col, value in enumerate(values):
+            item = QTableWidgetItem(value)
+            item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            self.table.setItem(index, col, item)
+
+    def _clear_logs(self) -> None:
+        if QMessageBox.question(
+            self, "Логи", "Очистить все записи логов запросов?"
+        ) != QMessageBox.StandardButton.Yes:
+            return
+        self.db.clear_request_logs()
         self.reload()
 
 
@@ -774,12 +949,14 @@ class MainWindow(QMainWindow):
         self.prompts_tab = PromptsTab(self.db)
         self.models_tab = ModelsTab(self.db)
         self.results_tab = ResultsTab(self.db)
+        self.logs_tab = LogsTab(self.db)
         self.settings_tab = SettingsTab(self.db)
 
         tabs.addTab(self.query_tab, "Запрос")
         tabs.addTab(self.prompts_tab, "Промты")
         tabs.addTab(self.models_tab, "Модели")
         tabs.addTab(self.results_tab, "Результаты")
+        tabs.addTab(self.logs_tab, "Логи")
         tabs.addTab(self.settings_tab, "Настройки")
         tabs.currentChanged.connect(self._on_tab_changed)
 
@@ -792,6 +969,7 @@ class MainWindow(QMainWindow):
 
 
 def main() -> None:
+    setup_logging()
     app = QApplication(sys.argv)
     app.setFont(QFont("Segoe UI", 10))
 

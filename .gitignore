@@ -216,3 +216,7 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# ChatList runtime
+chatlist.log
+chatlist.db
