@@ -22,3 +22,7 @@ pyinstaller minimal_program.spec
 ```bash
 pyinstaller --onefile --windowed --name minimal_program --collect-all PyQt6 main.py
 ```
+
+## Скриншот
+
+![Минимальная программа на Python](screen.png)
