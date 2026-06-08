@@ -67,29 +67,44 @@ MODEL_SORT_COLUMNS = {"id", "name", "api_url", "api_id", "is_active", "model_typ
 RESULT_SORT_COLUMNS = {"id", "prompt_id", "model_id", "response_text", "saved_at"}
 LOG_SORT_COLUMNS = {"id", "model_name", "status", "duration_ms", "created_at"}
 
+OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
+
+# Имена моделей — с суффиксом :free (требование OpenRouter для бесплатного тарифа).
 OPENROUTER_MODELS = [
     (
-        "openai/gpt-4o-mini",
-        "https://openrouter.ai/api/v1/chat/completions",
+        "google/gemma-4-31b-it:free",
+        OPENROUTER_URL,
         "OPENROUTER_API_KEY",
         1,
         "openrouter",
     ),
     (
-        "google/gemini-2.0-flash-001",
-        "https://openrouter.ai/api/v1/chat/completions",
+        "meta-llama/llama-3.3-70b-instruct:free",
+        OPENROUTER_URL,
         "OPENROUTER_API_KEY",
         1,
         "openrouter",
     ),
     (
-        "deepseek/deepseek-chat",
-        "https://openrouter.ai/api/v1/chat/completions",
+        "openai/gpt-oss-20b:free",
+        OPENROUTER_URL,
         "OPENROUTER_API_KEY",
         1,
         "openrouter",
     ),
 ]
+
+LEGACY_MODEL_NAMES = (
+    "gpt-4o",
+    "deepseek-chat",
+    "llama-3.3-70b-versatile",
+    "openai/gpt-4o-mini",
+    "google/gemini-2.0-flash-001",
+    "deepseek/deepseek-chat",
+    "google/gemini-2.0-flash-lite-preview-02-05:free",
+    "deepseek/deepseek-r1:free",
+    "google/gemma-4-26b-a4b-it:free",
+)
 
 
 @dataclass
@@ -151,6 +166,11 @@ class Database:
             self._seed(conn)
 
     def _migrate(self, conn: sqlite3.Connection) -> None:
+        placeholders = ",".join("?" * len(LEGACY_MODEL_NAMES))
+        conn.execute(
+            f"UPDATE models SET is_active = 0 WHERE name IN ({placeholders})",
+            LEGACY_MODEL_NAMES,
+        )
         conn.executemany(
             """
             INSERT OR IGNORE INTO models (name, api_url, api_id, is_active, model_type)
@@ -158,39 +178,27 @@ class Database:
             """,
             OPENROUTER_MODELS,
         )
+        free_names = [model[0] for model in OPENROUTER_MODELS]
+        free_placeholders = ",".join("?" * len(free_names))
+        conn.execute(
+            f"""
+            UPDATE models
+            SET api_url = ?, api_id = 'OPENROUTER_API_KEY',
+                model_type = 'openrouter', is_active = 1
+            WHERE name IN ({free_placeholders})
+            """,
+            [OPENROUTER_URL, *free_names],
+        )
 
     def _seed(self, conn: sqlite3.Connection) -> None:
         count = conn.execute("SELECT COUNT(*) FROM models").fetchone()[0]
         if count == 0:
-            seed_models = [
-                (
-                    "gpt-4o",
-                    "https://api.openai.com/v1/chat/completions",
-                    "OPENAI_API_KEY",
-                    1,
-                    "openai",
-                ),
-                (
-                    "deepseek-chat",
-                    "https://api.deepseek.com/v1/chat/completions",
-                    "DEEPSEEK_API_KEY",
-                    1,
-                    "deepseek",
-                ),
-                (
-                    "llama-3.3-70b-versatile",
-                    "https://api.groq.com/openai/v1/chat/completions",
-                    "GROQ_API_KEY",
-                    0,
-                    "groq",
-                ),
-            ]
             conn.executemany(
                 """
                 INSERT INTO models (name, api_url, api_id, is_active, model_type)
                 VALUES (?, ?, ?, ?, ?)
                 """,
-                seed_models,
+                OPENROUTER_MODELS,
             )
 
         default_settings = {

@@ -43,15 +43,15 @@ python main.py
 
 На вкладке **Модели** можно включать/отключать нейросети. Поле **Переменная .env** должно совпадать с именем ключа в `.env` (например, `OPENROUTER_API_KEY`).
 
-Модели OpenRouter по умолчанию:
+Бесплатные модели OpenRouter по умолчанию (в API — **с суффиксом `:free`**):
 
 | Имя модели | Тип |
 |------------|-----|
-| `openai/gpt-4o-mini` | openrouter |
-| `google/gemini-2.0-flash-001` | openrouter |
-| `deepseek/deepseek-chat` | openrouter |
+| `google/gemma-4-31b-it:free` | openrouter |
+| `meta-llama/llama-3.3-70b-instruct:free` | openrouter |
+| `openai/gpt-oss-20b:free` | openrouter |
 
-Имя модели — это идентификатор в API OpenRouter.
+Имя модели в базе совпадает с идентификатором в запросе к OpenRouter.
 
 ## Структура проекта
 

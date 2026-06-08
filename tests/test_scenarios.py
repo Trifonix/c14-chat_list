@@ -79,7 +79,9 @@ class ScenarioTests(unittest.TestCase):
 
     def test_openrouter_models_migrated(self) -> None:
         names = {model.name for model in self.db.list_models()}
-        self.assertIn("openai/gpt-4o-mini", names)
+        self.assertIn("google/gemma-4-31b-it:free", names)
+        self.assertIn("meta-llama/llama-3.3-70b-instruct:free", names)
+        self.assertIn("openai/gpt-oss-20b:free", names)
 
     @patch("models.call_model")
     def test_send_prompt_populates_session_flow(self, mock_call) -> None:
