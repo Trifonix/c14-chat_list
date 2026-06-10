@@ -11,6 +11,8 @@ from PyQt6.QtWidgets import (
     QApplication,
     QCheckBox,
     QComboBox,
+    QDialog,
+    QDialogButtonBox,
     QFileDialog,
     QFormLayout,
     QGroupBox,
@@ -25,6 +27,7 @@ from PyQt6.QtWidgets import (
     QTabWidget,
     QTableWidget,
     QTableWidgetItem,
+    QTextBrowser,
     QTextEdit,
     QVBoxLayout,
     QWidget,
@@ -130,9 +133,40 @@ QGroupBox::title {
 """
 
 
+class MarkdownResponseDialog(QDialog):
+    """Просмотр ответа нейросети в форматированном Markdown."""
+
+    def __init__(
+        self,
+        model_name: str,
+        response_text: str,
+        parent: QWidget | None = None,
+    ) -> None:
+        super().__init__(parent)
+        self.setWindowTitle(f"Ответ — {model_name}")
+        self.setMinimumSize(640, 480)
+        self.resize(800, 560)
+
+        layout = QVBoxLayout(self)
+        header = QLabel(f"Модель: {model_name}")
+        header.setStyleSheet("font-weight: 600; color: #94a3b8;")
+        layout.addWidget(header)
+
+        browser = QTextBrowser()
+        browser.setOpenExternalLinks(True)
+        browser.setMarkdown(response_text)
+        layout.addWidget(browser, 1)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        buttons.rejected.connect(self.reject)
+        buttons.accepted.connect(self.accept)
+        layout.addWidget(buttons)
+
+
 class SendPromptWorker(QThread):
     finished = pyqtSignal(list)
     failed = pyqtSignal(str)
+    progress = pyqtSignal(str)
 
     def __init__(
         self,
@@ -154,6 +188,7 @@ class SendPromptWorker(QThread):
                 self.active_models,
                 timeout=self.timeout,
                 db=self.db,
+                on_progress=self.progress.emit,
             )
             self.finished.emit(responses)
         except Exception as exc:
@@ -223,11 +258,12 @@ class QueryTab(QWidget):
         self.status_label.setStyleSheet("color: #94a3b8;")
         layout.addWidget(self.status_label)
 
-        self.results_table = QTableWidget(0, 3)
-        self.results_table.setHorizontalHeaderLabels(["Выбрать", "Модель", "Ответ"])
+        self.results_table = QTableWidget(0, 4)
+        self.results_table.setHorizontalHeaderLabels(["Выбрать", "Модель", "Ответ", ""])
         self.results_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
         self.results_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
         self.results_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+        self.results_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
         self.results_table.setAlternatingRowColors(True)
         self.results_table.verticalHeader().setVisible(False)
         layout.addWidget(self.results_table, 1)
@@ -308,7 +344,11 @@ class QueryTab(QWidget):
         )
         self._worker.finished.connect(self._on_send_finished)
         self._worker.failed.connect(self._on_send_failed)
+        self._worker.progress.connect(self._on_send_progress)
         self._worker.start()
+
+    def _on_send_progress(self, message: str) -> None:
+        self._set_busy(True, message)
 
     def _on_send_finished(self, responses: list) -> None:
         self.session.load_from_responses(responses)
@@ -339,9 +379,32 @@ class QueryTab(QWidget):
             model_item.setFlags(model_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
             self.results_table.setItem(index, 1, model_item)
 
-            response_item = QTableWidgetItem(row.response_text)
-            response_item.setFlags(response_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-            self.results_table.setItem(index, 2, response_item)
+            response_edit = QTextEdit()
+            response_edit.setReadOnly(True)
+            response_edit.setPlainText(row.response_text)
+            response_edit.setMinimumHeight(90)
+            response_edit.setMaximumHeight(160)
+            self.results_table.setCellWidget(index, 2, response_edit)
+
+            open_btn = QPushButton("Открыть")
+            open_btn.setObjectName("secondaryButton")
+            open_btn.clicked.connect(lambda _checked=False, i=index: self._open_response(i))
+            open_wrapper = QWidget()
+            open_layout = QHBoxLayout(open_wrapper)
+            open_layout.addWidget(open_btn)
+            open_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            open_layout.setContentsMargins(4, 4, 4, 4)
+            self.results_table.setCellWidget(index, 3, open_wrapper)
+
+            self.results_table.setRowHeight(index, 100)
+
+    def _open_response(self, index: int) -> None:
+        rows = self.session.rows
+        if index < 0 or index >= len(rows):
+            return
+        row = rows[index]
+        dialog = MarkdownResponseDialog(row.model_name, row.response_text, self)
+        dialog.exec()
 
     def _on_checkbox_changed(self, index: int, state: int) -> None:
         self.session.set_selected(index, state == int(Qt.CheckState.Checked.value))

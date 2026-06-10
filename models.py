@@ -8,7 +8,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable
 
 from dotenv import load_dotenv
 
@@ -174,6 +174,7 @@ def send_prompt(
     timeout: float = 60.0,
     parallel: bool = True,
     db: Database | None = None,
+    on_progress: Callable[[str], None] | None = None,
 ) -> list[PromptResponse]:
     """Отправляет промт во все активные модели."""
     if not active_models:
@@ -181,12 +182,21 @@ def send_prompt(
 
     load_env()
 
+    def _report(message: str) -> None:
+        if on_progress:
+            on_progress(message)
+
     def _task(model: AiModel) -> PromptResponse:
+        _report(f"Запрос отправлен в модель {model.name}")
         logger.info("Отправка промта в модель %s", model.name)
+        _report(f"Ожидание ответа от модели {model.name}")
         result = call_model(model, prompt_text, timeout=timeout, db=db)
         if result.error:
             logger.warning("Ошибка модели %s: %s", model.name, result.error)
+            _report(f"Ошибка от модели {model.name}: {result.error}")
             result.response_text = result.error
+        else:
+            _report(f"Ответ получен от модели {model.name}")
         return result
 
     results: list[PromptResponse] = []

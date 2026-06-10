@@ -80,7 +80,7 @@ class ScenarioTests(unittest.TestCase):
     def test_openrouter_models_migrated(self) -> None:
         names = {model.name for model in self.db.list_models()}
         self.assertIn("google/gemma-4-31b-it:free", names)
-        self.assertIn("meta-llama/llama-3.3-70b-instruct:free", names)
+        self.assertIn("poolside/laguna-xs.2:free", names)
         self.assertIn("openai/gpt-oss-20b:free", names)
 
     @patch("models.call_model")

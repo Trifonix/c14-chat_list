@@ -79,7 +79,7 @@ OPENROUTER_MODELS = [
         "openrouter",
     ),
     (
-        "meta-llama/llama-3.3-70b-instruct:free",
+        "poolside/laguna-xs.2:free",
         OPENROUTER_URL,
         "OPENROUTER_API_KEY",
         1,
@@ -104,6 +104,8 @@ LEGACY_MODEL_NAMES = (
     "google/gemini-2.0-flash-lite-preview-02-05:free",
     "deepseek/deepseek-r1:free",
     "google/gemma-4-26b-a4b-it:free",
+    "meta-llama/llama-3.3-70b-instruct:free",
+    "qwen/qwen3-next-80b-a3b-instruct:free"
 )
 
 
