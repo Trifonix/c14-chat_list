@@ -1,16 +1,18 @@
 # ChatList
 
-Python-приложение для отправки одного промта в несколько нейросетей и сравнения их ответов. Построено на PyQt6 и SQLite.
+Python-приложение для отправки одного промта в несколько нейросетей и сравнения их ответов. Построено на **PyQt6** и **SQLite**.
 
 ## Возможности
 
 - Ввод нового промта или выбор сохранённого из базы
-- Параллельная отправка в активные модели (OpenRouter, OpenAI, DeepSeek, Groq)
-- Временная таблица результатов с чекбоксами для выбора
+- Параллельная отправка в активные модели (OpenRouter)
+- Временная таблица результатов с чекбоксами и просмотром ответа в Markdown
 - Сохранение отмеченных ответов в постоянную БД
-- Управление промтами, моделями, результатами и настройками
+- Вкладки: **Запрос**, **Промты**, **Модели**, **Результаты**, **Логи**, **Настройки**
+- Поиск и сортировка во всех таблицах
 - Экспорт в Markdown и JSON
-- Логи запросов в БД и файл `chatlist.log`
+- Логи запросов в БД и файл `data/chatlist.log`
+- Тёмная тема интерфейса с контрастными элементами управления
 
 ## Требования
 
@@ -20,12 +22,12 @@ Python-приложение для отправки одного промта в
 ## Установка
 
 ```powershell
-cd c:\work-cursor\c14-chat_list
-pip install -r requirements.txt
-Copy-Item .env.example .env
+cd C:\projects\app
+pip install -r config/requirements.txt
+Copy-Item config\.env.example config\.env
 ```
 
-Откройте `.env` и укажите API-ключи. Для OpenRouter достаточно одной переменной:
+Откройте `config/.env` и укажите API-ключи. Для OpenRouter достаточно одной переменной:
 
 ```env
 OPENROUTER_API_KEY=sk-or-v1-ваш-ключ
@@ -37,53 +39,76 @@ OPENROUTER_API_KEY=sk-or-v1-ваш-ключ
 python main.py
 ```
 
-При первом запуске создаётся `chatlist.db` с примерами моделей OpenRouter.
+При первом запуске создаётся `data/chatlist.db` с моделями OpenRouter по умолчанию.
+
+## Структура проекта
+
+```
+ChatList/
+├── main.py              # Точка входа и графический интерфейс
+├── README.md
+├── LICENSE
+├── src/                 # Python-модули
+│   ├── db.py               # SQLite
+│   ├── models.py           # Отправка промтов в API
+│   ├── network.py          # HTTP-клиент
+│   ├── session.py          # Временная таблица в памяти
+│   ├── export_utils.py     # Экспорт MD / JSON
+│   ├── logging_setup.py    # Файловые логи
+│   └── paths.py            # Пути data/, config/, docs/
+├── docs/                # Документация
+│   ├── PROJECT.md          # Спецификация
+│   ├── PLAN.md             # План и статус реализации
+│   └── DATABASE.md         # Схема БД
+├── config/              # Конфигурация и сборка
+│   ├── requirements.txt
+│   ├── pytest.ini
+│   ├── .env.example
+│   ├── chatlist.spec
+│   └── minimal_program.spec
+├── data/                # БД и логи (создаются автоматически)
+│   ├── chatlist.db
+│   └── chatlist.log
+└── tests/               # pytest
+    ├── conftest.py
+    └── test_all.py
+```
 
 ## Настройка моделей
 
-На вкладке **Модели** можно включать/отключать нейросети. Поле **Переменная .env** должно совпадать с именем ключа в `.env` (например, `OPENROUTER_API_KEY`).
+На вкладке **Модели** можно включать/отключать нейросети. Поле **Переменная .env** должно совпадать с именем ключа в `config/.env` (например, `OPENROUTER_API_KEY`).
 
-Бесплатные модели OpenRouter по умолчанию (в API — **с суффиксом `:free`**):
+Модели OpenRouter по умолчанию (в API — **с суффиксом `:free`**):
 
 | Имя модели | Тип |
 |------------|-----|
 | `google/gemma-4-31b-it:free` | openrouter |
-| `meta-llama/llama-3.3-70b-instruct:free` | openrouter |
+| `poolside/laguna-xs.2:free` | openrouter |
 | `openai/gpt-oss-20b:free` | openrouter |
-
-Имя модели в базе совпадает с идентификатором в запросе к OpenRouter.
-
-## Структура проекта
-
-| Файл | Назначение |
-|------|------------|
-| `main.py` | Графический интерфейс |
-| `db.py` | Работа с SQLite |
-| `models.py` | Отправка промтов в API |
-| `network.py` | HTTP-запросы |
-| `session.py` | Временная таблица в памяти |
-| `export_utils.py` | Экспорт MD / JSON |
-| `PROJECT.md` | Спецификация |
-| `PLAN.md` | План реализации |
-| `DATABASE.md` | Схема БД |
 
 ## Тесты
 
+Единый набор pytest для рефакторинга — покрывает все модули в `src/` и smoke-тесты GUI:
+
 ```powershell
-python -m unittest tests.test_scenarios -v
+pip install -r config/requirements.txt
+pytest -c config/pytest.ini --rootdir=.
+pytest -c config/pytest.ini --rootdir=. -q
 ```
 
 ## Сборка exe
 
 ```powershell
 pip install pyinstaller
-pyinstaller chatlist.spec
+pyinstaller config/chatlist.spec
 ```
 
 Исполняемый файл: `dist\chatlist.exe`
 
-Рядом с exe положите файл `.env` с API-ключами.
+Рядом с exe положите `config/.env` с API-ключами (или `.env` в рабочей папке).
 
-## Скриншот (первая версия)
+## Документация
 
-![ChatList](screen.png)
+- [docs/PROJECT.md](docs/PROJECT.md) — назначение и рабочий процесс
+- [docs/DATABASE.md](docs/DATABASE.md) — схема SQLite
+- [docs/PLAN.md](docs/PLAN.md) — этапы разработки и текущий статус

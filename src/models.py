@@ -14,6 +14,7 @@ from dotenv import load_dotenv
 
 from db import AiModel
 from network import post_json
+from paths import CONFIG_DIR, ENV_FILE, ROOT_DIR
 
 if TYPE_CHECKING:
     from db import Database
@@ -32,11 +33,14 @@ class PromptResponse:
 
 
 def load_env(env_path: str | Path | None = None) -> None:
-    path = Path(env_path) if env_path else Path(".env")
-    if path.exists():
-        load_dotenv(path)
-    else:
-        load_dotenv()
+    if env_path is not None:
+        load_dotenv(Path(env_path))
+        return
+    for candidate in (ENV_FILE, ROOT_DIR / ".env", Path(".env")):
+        if candidate.exists():
+            load_dotenv(candidate)
+            return
+    load_dotenv()
 
 
 def get_api_key(api_id: str) -> str | None:

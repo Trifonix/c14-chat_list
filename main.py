@@ -5,8 +5,11 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+ROOT = Path(__file__).resolve().parent
+sys.path.insert(0, str(ROOT / "src"))
+
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
-from PyQt6.QtGui import QFont
+from PyQt6.QtGui import QColor, QFont, QPalette
 from PyQt6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -48,6 +51,9 @@ QWidget {
     color: #e2e8f0;
     font-family: "Segoe UI", sans-serif;
 }
+QLabel {
+    color: #e2e8f0;
+}
 QTabWidget::pane {
     border: 1px solid #334155;
     border-radius: 8px;
@@ -55,7 +61,7 @@ QTabWidget::pane {
 }
 QTabBar::tab {
     background-color: #1e293b;
-    color: #94a3b8;
+    color: #cbd5e1;
     padding: 10px 18px;
     margin-right: 2px;
     border-top-left-radius: 8px;
@@ -68,15 +74,40 @@ QTabBar::tab:selected {
 QLineEdit, QTextEdit, QComboBox, QSpinBox {
     background-color: #0f172a;
     color: #e2e8f0;
-    border: 1px solid #334155;
+    border: 1px solid #475569;
     border-radius: 8px;
     padding: 8px;
+    selection-background-color: #2563eb;
+    selection-color: #ffffff;
+}
+QLineEdit:disabled, QTextEdit:disabled, QComboBox:disabled, QSpinBox:disabled {
+    background-color: #1e293b;
+    color: #94a3b8;
+    border-color: #334155;
 }
 QComboBox::drop-down {
     border: none;
+    width: 24px;
+}
+QComboBox QAbstractItemView {
+    background-color: #1e293b;
+    color: #e2e8f0;
+    border: 1px solid #475569;
+    selection-background-color: #2563eb;
+    selection-color: #ffffff;
+    outline: none;
+}
+QTextBrowser {
+    background-color: #0f172a;
+    color: #e2e8f0;
+    border: 1px solid #475569;
+    border-radius: 8px;
+    padding: 12px;
+    selection-background-color: #2563eb;
+    selection-color: #ffffff;
 }
 QPushButton {
-    background-color: #3b82f6;
+    background-color: #2563eb;
     color: #ffffff;
     font-weight: 600;
     border: none;
@@ -84,33 +115,59 @@ QPushButton {
     padding: 10px 18px;
 }
 QPushButton:hover {
-    background-color: #2563eb;
+    background-color: #1d4ed8;
 }
 QPushButton:pressed {
-    background-color: #1d4ed8;
+    background-color: #1e40af;
 }
 QPushButton:disabled {
     background-color: #475569;
-    color: #94a3b8;
+    color: #cbd5e1;
 }
 QPushButton#secondaryButton {
     background-color: #334155;
+    color: #f8fafc;
 }
 QPushButton#secondaryButton:hover {
     background-color: #475569;
+    color: #ffffff;
+}
+QPushButton#secondaryButton:disabled {
+    background-color: #1e293b;
+    color: #94a3b8;
 }
 QPushButton#dangerButton {
     background-color: #dc2626;
+    color: #ffffff;
 }
 QPushButton#dangerButton:hover {
     background-color: #b91c1c;
+    color: #ffffff;
+}
+QCheckBox {
+    color: #e2e8f0;
+    spacing: 8px;
+}
+QCheckBox:disabled {
+    color: #64748b;
 }
 QTableWidget {
     background-color: #0f172a;
     alternate-background-color: #1e293b;
+    color: #e2e8f0;
     border: 1px solid #334155;
     border-radius: 8px;
     gridline-color: #334155;
+    selection-background-color: #2563eb;
+    selection-color: #ffffff;
+}
+QTableWidget::item {
+    color: #e2e8f0;
+    padding: 4px;
+}
+QTableWidget::item:selected {
+    background-color: #2563eb;
+    color: #ffffff;
 }
 QHeaderView::section {
     background-color: #334155;
@@ -124,13 +181,44 @@ QGroupBox {
     margin-top: 12px;
     padding-top: 16px;
     font-weight: 600;
+    color: #e2e8f0;
 }
 QGroupBox::title {
     subcontrol-origin: margin;
     left: 12px;
     padding: 0 6px;
+    color: #f1f5f9;
 }
 """
+
+
+def apply_palette(app: QApplication) -> None:
+    """Глобальная палитра для placeholder, выделения и системных виджетов."""
+    palette = QPalette()
+    palette.setColor(QPalette.ColorRole.Window, QColor("#0f172a"))
+    palette.setColor(QPalette.ColorRole.WindowText, QColor("#e2e8f0"))
+    palette.setColor(QPalette.ColorRole.Base, QColor("#0f172a"))
+    palette.setColor(QPalette.ColorRole.AlternateBase, QColor("#1e293b"))
+    palette.setColor(QPalette.ColorRole.Text, QColor("#e2e8f0"))
+    palette.setColor(QPalette.ColorRole.Button, QColor("#2563eb"))
+    palette.setColor(QPalette.ColorRole.ButtonText, QColor("#ffffff"))
+    palette.setColor(QPalette.ColorRole.Highlight, QColor("#2563eb"))
+    palette.setColor(QPalette.ColorRole.HighlightedText, QColor("#ffffff"))
+    palette.setColor(QPalette.ColorRole.PlaceholderText, QColor("#94a3b8"))
+    palette.setColor(
+        QPalette.ColorGroup.Disabled, QPalette.ColorRole.Text, QColor("#94a3b8")
+    )
+    palette.setColor(
+        QPalette.ColorGroup.Disabled,
+        QPalette.ColorRole.ButtonText,
+        QColor("#cbd5e1"),
+    )
+    palette.setColor(
+        QPalette.ColorGroup.Disabled,
+        QPalette.ColorRole.PlaceholderText,
+        QColor("#64748b"),
+    )
+    app.setPalette(palette)
 
 
 class MarkdownResponseDialog(QDialog):
@@ -149,7 +237,7 @@ class MarkdownResponseDialog(QDialog):
 
         layout = QVBoxLayout(self)
         header = QLabel(f"Модель: {model_name}")
-        header.setStyleSheet("font-weight: 600; color: #94a3b8;")
+        header.setStyleSheet("font-weight: 600; color: #cbd5e1;")
         layout.addWidget(header)
 
         browser = QTextBrowser()
@@ -255,7 +343,7 @@ class QueryTab(QWidget):
         layout.addWidget(prompt_group)
 
         self.status_label = QLabel("Готово к отправке")
-        self.status_label.setStyleSheet("color: #94a3b8;")
+        self.status_label.setStyleSheet("color: #cbd5e1;")
         layout.addWidget(self.status_label)
 
         self.results_table = QTableWidget(0, 4)
@@ -317,7 +405,7 @@ class QueryTab(QWidget):
         self.save_btn.setDisabled(busy)
         self.status_label.setText(message)
         self.status_label.setStyleSheet(
-            "color: #38bdf8;" if busy else "color: #94a3b8;"
+            "color: #7dd3fc;" if busy else "color: #cbd5e1;"
         )
 
     def _send_prompt(self) -> None:
@@ -900,7 +988,7 @@ class LogsTab(QWidget):
         layout.addWidget(self.table, 1)
 
         info = QLabel("Логи также пишутся в файл chatlist.log")
-        info.setStyleSheet("color: #94a3b8;")
+        info.setStyleSheet("color: #cbd5e1;")
         layout.addWidget(info)
 
         clear_btn = QPushButton("Очистить логи")
@@ -1034,6 +1122,7 @@ class MainWindow(QMainWindow):
 def main() -> None:
     setup_logging()
     app = QApplication(sys.argv)
+    apply_palette(app)
     app.setFont(QFont("Segoe UI", 10))
 
     database = get_database()

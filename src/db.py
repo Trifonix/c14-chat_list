@@ -7,7 +7,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-DEFAULT_DB_PATH = "chatlist.db"
+from paths import DATA_DIR, ensure_data_dir
+
+DEFAULT_DB_PATH = DATA_DIR / "chatlist.db"
 
 SCHEMA_SQL = """
 PRAGMA foreign_keys = ON;
@@ -153,6 +155,8 @@ class RequestLog:
 
 class Database:
     def __init__(self, db_path: str | Path | None = None) -> None:
+        if db_path is None:
+            ensure_data_dir()
         self.db_path = Path(db_path or DEFAULT_DB_PATH)
 
     def connect(self) -> sqlite3.Connection:
