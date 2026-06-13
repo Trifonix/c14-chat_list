@@ -5,6 +5,8 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+from PyQt6.QtGui import QIcon
+
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT / "src"))
 
@@ -1120,6 +1122,7 @@ class MainWindow(QMainWindow):
         self.db = db
         self.session = ResultSession()
         self.setWindowTitle(APP_NAME)
+        self.setWindowIcon(QIcon("app.ico"))
         self.setMinimumSize(960, 640)
         self.resize(1100, 720)
         self._build_ui()
@@ -1177,6 +1180,7 @@ class MainWindow(QMainWindow):
 def main() -> None:
     setup_logging()
     app = QApplication(sys.argv)
+    app.setWindowIcon(QIcon("app.ico"))
 
     database = get_database()
     window = MainWindow(database)
