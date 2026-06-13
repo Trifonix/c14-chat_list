@@ -15,7 +15,7 @@ from unittest.mock import MagicMock, patch
 import httpx
 import pytest
 
-from db import Database, get_database
+from db import AiModel, Database, get_database
 from export_utils import export_json, export_markdown
 from logging_setup import setup_logging
 from models import (
@@ -29,6 +29,12 @@ from models import (
 )
 from network import post_json
 from paths import DATA_DIR
+from prompt_improver import (
+    PromptImprovementResult,
+    get_improver_model,
+    improve_prompt,
+    parse_improvement_response,
+)
 from session import ResultSession, SessionRow
 
 
@@ -37,6 +43,8 @@ class TestDatabase:
         settings = temp_db.list_settings()
         assert settings["request_timeout"] == "60"
         assert settings["theme"] == "dark"
+        assert settings["ui_font_size"] == "10"
+        assert "prompt_improver_model_id" in settings
         assert len(temp_db.list_models()) >= 3
 
     def test_prompt_crud(self, temp_db: Database) -> None:
@@ -90,6 +98,14 @@ class TestDatabase:
         temp_db.set_setting("custom_key", "value")
         assert temp_db.get_setting("custom_key") == "value"
 
+    def test_ui_font_size_round_trip(self, temp_db: Database) -> None:
+        temp_db.set_setting("ui_font_size", "12")
+        assert temp_db.get_setting("ui_font_size") == "12"
+
+    def test_theme_persisted(self, temp_db: Database) -> None:
+        temp_db.set_setting("theme", "light")
+        assert temp_db.get_setting("theme") == "light"
+
     def test_request_logs(self, temp_db: Database, sample_model: AiModel) -> None:
         temp_db.log_request(sample_model.id, sample_model.name, "промт", "success")
         temp_db.clear_request_logs()
@@ -138,6 +154,11 @@ class TestModels:
     def test_build_chat_payload(self) -> None:
         payload = build_chat_payload("gpt-4", "Привет")
         assert payload["messages"][0]["content"] == "Привет"
+
+    def test_build_chat_payload_with_system(self) -> None:
+        payload = build_chat_payload("gpt-4", "Привет", system_prompt="Система")
+        assert payload["messages"][0]["role"] == "system"
+        assert payload["messages"][1]["content"] == "Привет"
 
     def test_build_headers_openrouter(self, sample_model: AiModel) -> None:
         model = sample_model.__class__(**{**sample_model.__dict__, "model_type": "openrouter"})
@@ -219,16 +240,121 @@ class TestLoggingSetup:
         assert len([h for h in root.handlers if isinstance(h, logging.FileHandler)]) == 1
 
 
+class TestPromptImprover:
+    def test_parse_valid_json(self) -> None:
+        raw = json.dumps(
+            {
+                "improved": "Улучшенный промт",
+                "alternatives": ["Вариант A", "Вариант B"],
+                "model_hints": {"code": "Для кода"},
+            },
+            ensure_ascii=False,
+        )
+        result = parse_improvement_response(raw, "исходный")
+        assert result.improved == "Улучшенный промт"
+        assert len(result.alternatives) == 2
+        assert result.model_hints["code"] == "Для кода"
+
+    def test_parse_json_in_markdown_block(self) -> None:
+        raw = '```json\n{"improved": "x", "alternatives": ["a"]}\n```'
+        result = parse_improvement_response(raw, "исходный")
+        assert result.improved == "x"
+        assert result.alternatives == ["a"]
+
+    def test_parse_invalid_json_fallback(self) -> None:
+        raw = "Просто текст без JSON"
+        result = parse_improvement_response(raw, "исходный")
+        assert result.improved == raw
+        assert result.alternatives == []
+
+    def test_improve_prompt_empty_text(self, temp_db: Database, sample_model: AiModel) -> None:
+        result = improve_prompt("  ", sample_model, db=temp_db)
+        assert result == "Промт пуст"
+
+    def test_get_improver_model_from_settings(
+        self, temp_db: Database, sample_model: AiModel
+    ) -> None:
+        temp_db.set_setting("prompt_improver_model_id", str(sample_model.id))
+        model = get_improver_model(temp_db)
+        assert model is not None
+        assert model.id == sample_model.id
+
+    @patch("prompt_improver.call_model")
+    def test_improve_prompt_success(
+        self, mock_call: MagicMock, temp_db: Database, sample_model: AiModel
+    ) -> None:
+        mock_call.return_value = PromptResponse(
+            sample_model.id,
+            sample_model.name,
+            json.dumps(
+                {
+                    "improved": "лучше",
+                    "alternatives": ["alt1", "alt2"],
+                    "model_hints": {"analysis": "анализ"},
+                },
+                ensure_ascii=False,
+            ),
+        )
+        result = improve_prompt("тест", sample_model, db=temp_db)
+        assert isinstance(result, PromptImprovementResult)
+        assert result.improved == "лучше"
+        assert result.alternatives == ["alt1", "alt2"]
+        assert result.model_hints["analysis"] == "анализ"
+
+    @patch("prompt_improver.call_model")
+    def test_improve_prompt_api_error(
+        self, mock_call: MagicMock, temp_db: Database, sample_model: AiModel
+    ) -> None:
+        mock_call.return_value = PromptResponse(
+            sample_model.id, sample_model.name, "", error="API недоступен"
+        )
+        result = improve_prompt("тест", sample_model, db=temp_db)
+        assert result == "API недоступен"
+
+
+class TestThemes:
+    def test_get_stylesheet_dark_and_light(self) -> None:
+        from themes import STYLES_DARK, STYLES_LIGHT, get_stylesheet
+
+        assert get_stylesheet("dark") == STYLES_DARK
+        assert get_stylesheet("light") == STYLES_LIGHT
+        assert "QPushButton" in get_stylesheet("dark")
+        assert "QPushButton#secondaryButton" in get_stylesheet("light")
+
+    def test_apply_palette(self, qapp) -> None:
+        from themes import apply_palette
+
+        apply_palette(qapp, "dark")
+        apply_palette(qapp, "light")
+
+    def test_apply_theme(self, qapp, temp_db: Database) -> None:
+        import main
+        from themes import apply_theme
+
+        window = main.MainWindow(temp_db)
+        apply_theme(qapp, window, "light", 12)
+        assert qapp.font().pointSize() == 12
+        window.close()
+
+
+class TestAppMeta:
+    def test_constants(self) -> None:
+        from app_meta import APP_NAME, APP_VERSION
+
+        assert APP_NAME == "ChatList"
+        assert APP_VERSION
+
+
 class TestMainGui:
     def test_styles_defined(self) -> None:
+        from themes import STYLES_DARK
+
+        assert "QPushButton" in STYLES_DARK
+
+    def test_main_styles_alias(self) -> None:
         import main
 
         assert "QPushButton" in main.STYLES
-
-    def test_apply_palette(self, qapp) -> None:
-        import main
-
-        main.apply_palette(qapp)
 
     def test_main_window_construct(self, qapp, temp_db: Database) -> None:
         import main
@@ -236,6 +362,30 @@ class TestMainGui:
         window = main.MainWindow(temp_db)
         assert window.windowTitle() == "ChatList"
         window.close()
+
+    def test_about_dialog(self, qapp) -> None:
+        from about_dialog import AboutDialog
+
+        dialog = AboutDialog()
+        assert "ChatList" in dialog.windowTitle()
+        dialog.close()
+
+    def test_prompt_improvement_dialog(self, qapp) -> None:
+        import main
+
+        substituted: list[str] = []
+        result = PromptImprovementResult(
+            original="исходный",
+            improved="улучшенный",
+            alternatives=["alt1"],
+            model_hints={"code": "для кода"},
+        )
+        dialog = main.PromptImprovementDialog(
+            result, on_substitute=substituted.append, parent=None
+        )
+        dialog._substitute("улучшенный")
+        assert substituted == ["улучшенный"]
+        dialog.close()
 
 
 class TestScenarios:

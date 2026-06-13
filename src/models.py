@@ -48,10 +48,18 @@ def get_api_key(api_id: str) -> str | None:
     return value or None
 
 
-def build_chat_payload(model_name: str, prompt_text: str) -> dict:
+def build_chat_payload(
+    model_name: str,
+    prompt_text: str,
+    system_prompt: str | None = None,
+) -> dict:
+    messages: list[dict[str, str]] = []
+    if system_prompt:
+        messages.append({"role": "system", "content": system_prompt})
+    messages.append({"role": "user", "content": prompt_text})
     return {
         "model": model_name,
-        "messages": [{"role": "user", "content": prompt_text}],
+        "messages": messages,
     }
 
 
@@ -104,6 +112,7 @@ def call_model(
     prompt_text: str,
     timeout: float = 60.0,
     db: Database | None = None,
+    system_prompt: str | None = None,
 ) -> PromptResponse:
     started = time.perf_counter()
     api_key = get_api_key(model.api_id)
@@ -128,7 +137,7 @@ def call_model(
         )
 
     headers = build_headers(model, api_key)
-    payload = build_chat_payload(model.name, prompt_text)
+    payload = build_chat_payload(model.name, prompt_text, system_prompt=system_prompt)
 
     data, error = post_json(model.api_url, headers, payload, timeout=timeout)
     duration_ms = int((time.perf_counter() - started) * 1000)

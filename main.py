@@ -9,7 +9,6 @@ ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT / "src"))
 
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
-from PyQt6.QtGui import QColor, QFont, QPalette
 from PyQt6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -36,189 +35,21 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from about_dialog import AboutDialog
+from app_meta import APP_NAME
 from db import AiModel, Database, Prompt, RequestLog, SavedResult, get_database
 from export_utils import export_json, export_markdown
 from logging_setup import setup_logging
 from models import send_prompt
+from prompt_improver import (
+    PromptImprovementResult,
+    get_improver_model,
+    improve_prompt,
+)
 from session import ResultSession, SessionRow
+from themes import apply_theme, get_stylesheet
 
-STYLES = """
-QMainWindow, QDialog {
-    background-color: #0f172a;
-}
-QWidget {
-    background-color: transparent;
-    color: #e2e8f0;
-    font-family: "Segoe UI", sans-serif;
-}
-QLabel {
-    color: #e2e8f0;
-}
-QTabWidget::pane {
-    border: 1px solid #334155;
-    border-radius: 8px;
-    background-color: #1e293b;
-}
-QTabBar::tab {
-    background-color: #1e293b;
-    color: #cbd5e1;
-    padding: 10px 18px;
-    margin-right: 2px;
-    border-top-left-radius: 8px;
-    border-top-right-radius: 8px;
-}
-QTabBar::tab:selected {
-    background-color: #334155;
-    color: #f8fafc;
-}
-QLineEdit, QTextEdit, QComboBox, QSpinBox {
-    background-color: #0f172a;
-    color: #e2e8f0;
-    border: 1px solid #475569;
-    border-radius: 8px;
-    padding: 8px;
-    selection-background-color: #2563eb;
-    selection-color: #ffffff;
-}
-QLineEdit:disabled, QTextEdit:disabled, QComboBox:disabled, QSpinBox:disabled {
-    background-color: #1e293b;
-    color: #94a3b8;
-    border-color: #334155;
-}
-QComboBox::drop-down {
-    border: none;
-    width: 24px;
-}
-QComboBox QAbstractItemView {
-    background-color: #1e293b;
-    color: #e2e8f0;
-    border: 1px solid #475569;
-    selection-background-color: #2563eb;
-    selection-color: #ffffff;
-    outline: none;
-}
-QTextBrowser {
-    background-color: #0f172a;
-    color: #e2e8f0;
-    border: 1px solid #475569;
-    border-radius: 8px;
-    padding: 12px;
-    selection-background-color: #2563eb;
-    selection-color: #ffffff;
-}
-QPushButton {
-    background-color: #2563eb;
-    color: #ffffff;
-    font-weight: 600;
-    border: none;
-    border-radius: 8px;
-    padding: 10px 18px;
-}
-QPushButton:hover {
-    background-color: #1d4ed8;
-}
-QPushButton:pressed {
-    background-color: #1e40af;
-}
-QPushButton:disabled {
-    background-color: #475569;
-    color: #cbd5e1;
-}
-QPushButton#secondaryButton {
-    background-color: #334155;
-    color: #f8fafc;
-}
-QPushButton#secondaryButton:hover {
-    background-color: #475569;
-    color: #ffffff;
-}
-QPushButton#secondaryButton:disabled {
-    background-color: #1e293b;
-    color: #94a3b8;
-}
-QPushButton#dangerButton {
-    background-color: #dc2626;
-    color: #ffffff;
-}
-QPushButton#dangerButton:hover {
-    background-color: #b91c1c;
-    color: #ffffff;
-}
-QCheckBox {
-    color: #e2e8f0;
-    spacing: 8px;
-}
-QCheckBox:disabled {
-    color: #64748b;
-}
-QTableWidget {
-    background-color: #0f172a;
-    alternate-background-color: #1e293b;
-    color: #e2e8f0;
-    border: 1px solid #334155;
-    border-radius: 8px;
-    gridline-color: #334155;
-    selection-background-color: #2563eb;
-    selection-color: #ffffff;
-}
-QTableWidget::item {
-    color: #e2e8f0;
-    padding: 4px;
-}
-QTableWidget::item:selected {
-    background-color: #2563eb;
-    color: #ffffff;
-}
-QHeaderView::section {
-    background-color: #334155;
-    color: #f8fafc;
-    padding: 8px;
-    border: none;
-}
-QGroupBox {
-    border: 1px solid #334155;
-    border-radius: 8px;
-    margin-top: 12px;
-    padding-top: 16px;
-    font-weight: 600;
-    color: #e2e8f0;
-}
-QGroupBox::title {
-    subcontrol-origin: margin;
-    left: 12px;
-    padding: 0 6px;
-    color: #f1f5f9;
-}
-"""
-
-
-def apply_palette(app: QApplication) -> None:
-    """Глобальная палитра для placeholder, выделения и системных виджетов."""
-    palette = QPalette()
-    palette.setColor(QPalette.ColorRole.Window, QColor("#0f172a"))
-    palette.setColor(QPalette.ColorRole.WindowText, QColor("#e2e8f0"))
-    palette.setColor(QPalette.ColorRole.Base, QColor("#0f172a"))
-    palette.setColor(QPalette.ColorRole.AlternateBase, QColor("#1e293b"))
-    palette.setColor(QPalette.ColorRole.Text, QColor("#e2e8f0"))
-    palette.setColor(QPalette.ColorRole.Button, QColor("#2563eb"))
-    palette.setColor(QPalette.ColorRole.ButtonText, QColor("#ffffff"))
-    palette.setColor(QPalette.ColorRole.Highlight, QColor("#2563eb"))
-    palette.setColor(QPalette.ColorRole.HighlightedText, QColor("#ffffff"))
-    palette.setColor(QPalette.ColorRole.PlaceholderText, QColor("#94a3b8"))
-    palette.setColor(
-        QPalette.ColorGroup.Disabled, QPalette.ColorRole.Text, QColor("#94a3b8")
-    )
-    palette.setColor(
-        QPalette.ColorGroup.Disabled,
-        QPalette.ColorRole.ButtonText,
-        QColor("#cbd5e1"),
-    )
-    palette.setColor(
-        QPalette.ColorGroup.Disabled,
-        QPalette.ColorRole.PlaceholderText,
-        QColor("#64748b"),
-    )
-    app.setPalette(palette)
+STYLES = get_stylesheet("dark")
 
 
 class MarkdownResponseDialog(QDialog):
@@ -237,7 +68,7 @@ class MarkdownResponseDialog(QDialog):
 
         layout = QVBoxLayout(self)
         header = QLabel(f"Модель: {model_name}")
-        header.setStyleSheet("font-weight: 600; color: #cbd5e1;")
+        header.setStyleSheet("font-weight: 600;")
         layout.addWidget(header)
 
         browser = QTextBrowser()
@@ -283,6 +114,126 @@ class SendPromptWorker(QThread):
             self.failed.emit(str(exc))
 
 
+class ImprovePromptWorker(QThread):
+    finished = pyqtSignal(object)
+    failed = pyqtSignal(str)
+    status = pyqtSignal(str)
+
+    def __init__(
+        self,
+        prompt_text: str,
+        model: AiModel,
+        timeout: float,
+        db: Database,
+    ) -> None:
+        super().__init__()
+        self.prompt_text = prompt_text
+        self.model = model
+        self.timeout = timeout
+        self.db = db
+
+    def run(self) -> None:
+        try:
+            self.status.emit("Улучшение промта…")
+            result = improve_prompt(
+                self.prompt_text, self.model, timeout=self.timeout, db=self.db
+            )
+            if isinstance(result, str):
+                self.failed.emit(result)
+            else:
+                self.finished.emit(result)
+        except Exception as exc:
+            self.failed.emit(str(exc))
+
+
+class PromptImprovementDialog(QDialog):
+    """Диалог с улучшенным промтом, альтернативами и подсказками по типам задач."""
+
+    def __init__(
+        self,
+        result: PromptImprovementResult,
+        on_substitute,
+        parent: QWidget | None = None,
+    ) -> None:
+        super().__init__(parent)
+        self._on_substitute = on_substitute
+        self.setWindowTitle("Улучшение промта")
+        self.setMinimumSize(640, 520)
+        self.resize(760, 620)
+        self._build_ui(result)
+
+    def _build_ui(self, result: PromptImprovementResult) -> None:
+        layout = QVBoxLayout(self)
+
+        original_group = QGroupBox("Исходный промт")
+        original_edit = QTextEdit()
+        original_edit.setReadOnly(True)
+        original_edit.setPlainText(result.original)
+        original_edit.setMaximumHeight(100)
+        original_group_layout = QVBoxLayout(original_group)
+        original_group_layout.addWidget(original_edit)
+        layout.addWidget(original_group)
+
+        improved_group = QGroupBox("Улучшенный")
+        improved_layout = QVBoxLayout(improved_group)
+        improved_edit = QTextEdit()
+        improved_edit.setReadOnly(True)
+        improved_edit.setPlainText(result.improved)
+        improved_edit.setMinimumHeight(80)
+        improved_layout.addWidget(improved_edit)
+        substitute_btn = QPushButton("Подставить")
+        substitute_btn.clicked.connect(lambda: self._substitute(result.improved))
+        improved_layout.addWidget(substitute_btn)
+        layout.addWidget(improved_group)
+
+        if result.alternatives:
+            alt_group = QGroupBox("Альтернативы")
+            alt_layout = QVBoxLayout(alt_group)
+            for index, alternative in enumerate(result.alternatives, start=1):
+                row = QHBoxLayout()
+                alt_edit = QTextEdit()
+                alt_edit.setReadOnly(True)
+                alt_edit.setPlainText(alternative)
+                alt_edit.setMaximumHeight(72)
+                row.addWidget(alt_edit, 1)
+                btn = QPushButton("Подставить")
+                btn.setObjectName("secondaryButton")
+                btn.clicked.connect(lambda _checked=False, text=alternative: self._substitute(text))
+                row.addWidget(btn)
+                alt_layout.addLayout(row)
+            layout.addWidget(alt_group)
+
+        if result.model_hints:
+            hints_group = QGroupBox("Под разные задачи")
+            hints_group.setCheckable(True)
+            hints_group.setChecked(False)
+            hints_layout = QVBoxLayout(hints_group)
+            labels = {"code": "Код", "analysis": "Анализ", "creative": "Креатив"}
+            for key, hint_text in result.model_hints.items():
+                title = labels.get(key, key)
+                hints_layout.addWidget(QLabel(title))
+                hint_row = QHBoxLayout()
+                hint_edit = QTextEdit()
+                hint_edit.setReadOnly(True)
+                hint_edit.setPlainText(hint_text)
+                hint_edit.setMaximumHeight(72)
+                hint_row.addWidget(hint_edit, 1)
+                btn = QPushButton("Подставить")
+                btn.setObjectName("secondaryButton")
+                btn.clicked.connect(lambda _checked=False, text=hint_text: self._substitute(text))
+                hint_row.addWidget(btn)
+                hints_layout.addLayout(hint_row)
+            layout.addWidget(hints_group)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+    def _substitute(self, text: str) -> None:
+        self._on_substitute(text)
+        self.accept()
+
+
 class QueryTab(QWidget):
     def __init__(self, db: Database, session: ResultSession, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -290,6 +241,7 @@ class QueryTab(QWidget):
         self.session = session
         self._current_prompt_id: int | None = None
         self._worker: SendPromptWorker | None = None
+        self._improve_worker: ImprovePromptWorker | None = None
         self._build_ui()
         self._reload_saved_prompts()
 
@@ -321,6 +273,9 @@ class QueryTab(QWidget):
         actions = QHBoxLayout()
         self.send_btn = QPushButton("Отправить")
         self.send_btn.clicked.connect(self._send_prompt)
+        self.improve_btn = QPushButton("Улучшить промт")
+        self.improve_btn.setObjectName("secondaryButton")
+        self.improve_btn.clicked.connect(self._improve_prompt)
         self.save_btn = QPushButton("Сохранить выбранные")
         self.save_btn.setObjectName("secondaryButton")
         self.save_btn.clicked.connect(self._save_selected)
@@ -334,6 +289,7 @@ class QueryTab(QWidget):
         self.export_json_btn.setObjectName("secondaryButton")
         self.export_json_btn.clicked.connect(lambda: self._export("json"))
         actions.addWidget(self.send_btn)
+        actions.addWidget(self.improve_btn)
         actions.addWidget(self.save_btn)
         actions.addWidget(self.clear_btn)
         actions.addWidget(self.export_md_btn)
@@ -343,7 +299,7 @@ class QueryTab(QWidget):
         layout.addWidget(prompt_group)
 
         self.status_label = QLabel("Готово к отправке")
-        self.status_label.setStyleSheet("color: #cbd5e1;")
+        self.status_label.setObjectName("statusLabel")
         layout.addWidget(self.status_label)
 
         self.results_table = QTableWidget(0, 4)
@@ -402,11 +358,52 @@ class QueryTab(QWidget):
 
     def _set_busy(self, busy: bool, message: str) -> None:
         self.send_btn.setDisabled(busy)
+        self.improve_btn.setDisabled(busy)
         self.save_btn.setDisabled(busy)
         self.status_label.setText(message)
-        self.status_label.setStyleSheet(
-            "color: #7dd3fc;" if busy else "color: #cbd5e1;"
+        self.status_label.setProperty("busy", busy)
+        self.status_label.style().unpolish(self.status_label)
+        self.status_label.style().polish(self.status_label)
+
+    def _improve_prompt(self) -> None:
+        prompt_text = self.prompt_edit.toPlainText().strip()
+        if not prompt_text:
+            QMessageBox.warning(self, "Промт", "Введите текст запроса.")
+            return
+
+        model = get_improver_model(self.db)
+        if model is None:
+            QMessageBox.warning(
+                self,
+                "Модели",
+                "Нет активных моделей. Включите хотя бы одну на вкладке «Модели» "
+                "или выберите модель в «Настройки».",
+            )
+            return
+
+        self._set_busy(True, "Улучшение промта…")
+        self._improve_worker = ImprovePromptWorker(
+            prompt_text, model, self._get_timeout(), self.db
         )
+        self._improve_worker.finished.connect(self._on_improve_finished)
+        self._improve_worker.failed.connect(self._on_improve_failed)
+        self._improve_worker.status.connect(
+            lambda message: self._set_busy(True, message)
+        )
+        self._improve_worker.start()
+
+    def _on_improve_finished(self, result: PromptImprovementResult) -> None:
+        self._set_busy(False, "Улучшение завершено")
+        dialog = PromptImprovementDialog(
+            result,
+            on_substitute=self.prompt_edit.setPlainText,
+            parent=self,
+        )
+        dialog.exec()
+
+    def _on_improve_failed(self, error: str) -> None:
+        self._set_busy(False, "Ошибка улучшения промта")
+        QMessageBox.critical(self, "Ошибка", error)
 
     def _send_prompt(self) -> None:
         prompt_text = self.prompt_edit.toPlainText().strip()
@@ -988,7 +985,7 @@ class LogsTab(QWidget):
         layout.addWidget(self.table, 1)
 
         info = QLabel("Логи также пишутся в файл chatlist.log")
-        info.setStyleSheet("color: #cbd5e1;")
+        info.setObjectName("mutedLabel")
         layout.addWidget(info)
 
         clear_btn = QPushButton("Очистить логи")
@@ -1035,9 +1032,15 @@ class LogsTab(QWidget):
 
 
 class SettingsTab(QWidget):
-    def __init__(self, db: Database, parent: QWidget | None = None) -> None:
+    def __init__(
+        self,
+        db: Database,
+        on_settings_saved=None,
+        parent: QWidget | None = None,
+    ) -> None:
         super().__init__(parent)
         self.db = db
+        self._on_settings_saved = on_settings_saved
         self._build_ui()
         self.reload()
 
@@ -1054,8 +1057,16 @@ class SettingsTab(QWidget):
         self.theme_combo.addItems(["dark", "light"])
         form.addRow("Тема:", self.theme_combo)
 
+        self.font_spin = QSpinBox()
+        self.font_spin.setRange(8, 24)
+        self.font_spin.setSuffix(" pt")
+        form.addRow("Размер шрифта:", self.font_spin)
+
         self.tags_edit = QLineEdit()
         form.addRow("Теги по умолчанию:", self.tags_edit)
+
+        self.improver_model_combo = QComboBox()
+        form.addRow("Модель для улучшения промта:", self.improver_model_combo)
 
         self.db_path_label = QLabel()
         form.addRow("Файл БД:", self.db_path_label)
@@ -1073,13 +1084,33 @@ class SettingsTab(QWidget):
         theme = settings.get("theme", "dark")
         index = self.theme_combo.findText(theme)
         self.theme_combo.setCurrentIndex(index if index >= 0 else 0)
+        self.font_spin.setValue(int(settings.get("ui_font_size", "10") or 10))
         self.tags_edit.setText(settings.get("default_tags", ""))
         self.db_path_label.setText(settings.get("db_path", "chatlist.db"))
+
+        saved_id = settings.get("prompt_improver_model_id")
+        self.improver_model_combo.blockSignals(True)
+        self.improver_model_combo.clear()
+        active_models = self.db.list_models(active_only=True)
+        selected_index = 0
+        for index, model in enumerate(active_models):
+            self.improver_model_combo.addItem(model.name, model.id)
+            if saved_id and str(model.id) == saved_id:
+                selected_index = index
+        if active_models:
+            self.improver_model_combo.setCurrentIndex(selected_index)
+        self.improver_model_combo.blockSignals(False)
 
     def _save(self) -> None:
         self.db.set_setting("request_timeout", str(self.timeout_spin.value()))
         self.db.set_setting("theme", self.theme_combo.currentText())
+        self.db.set_setting("ui_font_size", str(self.font_spin.value()))
         self.db.set_setting("default_tags", self.tags_edit.text().strip())
+        model_id = self.improver_model_combo.currentData()
+        if model_id is not None:
+            self.db.set_setting("prompt_improver_model_id", str(model_id))
+        if self._on_settings_saved:
+            self._on_settings_saved()
         QMessageBox.information(self, "Настройки", "Настройки сохранены.")
 
 
@@ -1088,11 +1119,35 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.db = db
         self.session = ResultSession()
-        self.setWindowTitle("ChatList")
+        self.setWindowTitle(APP_NAME)
         self.setMinimumSize(960, 640)
         self.resize(1100, 720)
         self._build_ui()
-        self.setStyleSheet(STYLES)
+        self._build_menu()
+
+    def _build_menu(self) -> None:
+        help_menu = self.menuBar().addMenu("Справка")
+        about_action = help_menu.addAction("О программе…")
+        about_action.triggered.connect(self._show_about)
+
+    def _show_about(self) -> None:
+        dialog = AboutDialog(self)
+        dialog.exec()
+
+    def apply_current_theme(self, app: QApplication) -> None:
+        settings = self.db.list_settings()
+        theme = settings.get("theme", "dark") or "dark"
+        try:
+            font_size = int(settings.get("ui_font_size", "10") or 10)
+        except ValueError:
+            font_size = 10
+        font_size = max(8, min(24, font_size))
+        apply_theme(app, self, theme, font_size)
+
+    def _on_settings_saved(self) -> None:
+        app = QApplication.instance()
+        if isinstance(app, QApplication):
+            self.apply_current_theme(app)
 
     def _build_ui(self) -> None:
         tabs = QTabWidget()
@@ -1101,7 +1156,7 @@ class MainWindow(QMainWindow):
         self.models_tab = ModelsTab(self.db)
         self.results_tab = ResultsTab(self.db)
         self.logs_tab = LogsTab(self.db)
-        self.settings_tab = SettingsTab(self.db)
+        self.settings_tab = SettingsTab(self.db, on_settings_saved=self._on_settings_saved)
 
         tabs.addTab(self.query_tab, "Запрос")
         tabs.addTab(self.prompts_tab, "Промты")
@@ -1122,11 +1177,10 @@ class MainWindow(QMainWindow):
 def main() -> None:
     setup_logging()
     app = QApplication(sys.argv)
-    apply_palette(app)
-    app.setFont(QFont("Segoe UI", 10))
 
     database = get_database()
     window = MainWindow(database)
+    window.apply_current_theme(app)
     window.show()
 
     sys.exit(app.exec())

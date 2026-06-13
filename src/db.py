@@ -211,6 +211,7 @@ class Database:
             "db_path": str(self.db_path),
             "request_timeout": "60",
             "theme": "dark",
+            "ui_font_size": "10",
             "default_tags": "",
         }
         for key, value in default_settings.items():
@@ -219,6 +220,21 @@ class Database:
                 INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)
                 """,
                 (key, value),
+            )
+
+        row = conn.execute(
+            """
+            SELECT id FROM models
+            WHERE is_active = 1 AND model_type = 'openrouter'
+            ORDER BY id LIMIT 1
+            """
+        ).fetchone()
+        if row:
+            conn.execute(
+                """
+                INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)
+                """,
+                ("prompt_improver_model_id", str(row["id"])),
             )
 
     # --- prompts ---
