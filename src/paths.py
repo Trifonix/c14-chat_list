@@ -49,3 +49,14 @@ def bundled_env_file() -> Path | None:
         return None
     candidate = Path(meipass) / "config" / ".env"
     return candidate if candidate.exists() else None
+
+
+def app_icon_path() -> Path:
+    """Путь к иконке: из bundle в exe или app.ico рядом с проектом."""
+    if is_frozen():
+        meipass = getattr(sys, "_MEIPASS", None)
+        if meipass:
+            bundled = Path(meipass) / "app.ico"
+            if bundled.exists():
+                return bundled
+    return ROOT_DIR / "app.ico"

@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ChatList — сравнение ответов нейросетей</title>
+  <meta name="description" content="ChatList отправляет один промт в несколько нейросетей параллельно и помогает сравнить ответы.">
+  <style>
+    :root {
+      --bg: #0f1117;
+      --surface: #1a1d27;
+      --text: #e8eaed;
+      --muted: #9aa0a6;
+      --accent: #6ea8fe;
+      --accent-hover: #8bb9ff;
+      --border: #2d3140;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+    }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { color: var(--accent-hover); text-decoration: underline; }
+    .wrap { max-width: 880px; margin: 0 auto; padding: 2rem 1.25rem 4rem; }
+    header { text-align: center; padding: 3rem 0 2rem; }
+    .logo {
+      width: 72px; height: 72px; border-radius: 16px;
+      background: linear-gradient(135deg, #4f8cff, #7c5cff);
+      display: inline-flex; align-items: center; justify-content: center;
+      font-size: 2rem; font-weight: 700; color: #fff; margin-bottom: 1rem;
+    }
+    h1 { font-size: 2.2rem; font-weight: 700; margin-bottom: 0.5rem; }
+    .tagline { color: var(--muted); font-size: 1.1rem; max-width: 560px; margin: 0 auto 1.5rem; }
+    .actions { display: flex; gap: 0.75rem; justify-content: center; flex-wrap: wrap; margin-top: 1.5rem; }
+    .btn {
+      display: inline-block; padding: 0.75rem 1.5rem; border-radius: 8px;
+      font-weight: 600; font-size: 1rem; border: none; cursor: pointer;
+    }
+    .btn-primary { background: var(--accent); color: #0f1117; }
+    .btn-primary:hover { background: var(--accent-hover); color: #0f1117; text-decoration: none; }
+    .btn-secondary {
+      background: transparent; color: var(--text);
+      border: 1px solid var(--border);
+    }
+    .btn-secondary:hover { border-color: var(--accent); text-decoration: none; }
+    section { margin-top: 3rem; }
+    h2 { font-size: 1.4rem; margin-bottom: 1rem; }
+    .card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 12px; padding: 1.25rem 1.5rem; margin-bottom: 1rem;
+    }
+    ul.features { list-style: none; }
+    ul.features li { padding: 0.35rem 0; padding-left: 1.5rem; position: relative; }
+    ul.features li::before {
+      content: "✓"; position: absolute; left: 0; color: var(--accent); font-weight: 700;
+    }
+    .steps { counter-reset: step; list-style: none; }
+    .steps li {
+      counter-increment: step; padding: 0.75rem 0 0.75rem 2.5rem;
+      position: relative; border-bottom: 1px solid var(--border);
+    }
+    .steps li:last-child { border-bottom: none; }
+    .steps li::before {
+      content: counter(step); position: absolute; left: 0;
+      width: 1.75rem; height: 1.75rem; border-radius: 50%;
+      background: var(--accent); color: #0f1117; font-weight: 700;
+      display: flex; align-items: center; justify-content: center; font-size: 0.85rem;
+    }
+    footer {
+      margin-top: 4rem; text-align: center; color: var(--muted); font-size: 0.9rem;
+    }
+    code {
+      background: #252836; padding: 0.15rem 0.4rem; border-radius: 4px;
+      font-size: 0.9em;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div class="logo">CL</div>
+      <h1>ChatList</h1>
+      <p class="tagline">
+        Один промт — несколько нейросетей. Сравните ответы, сохраните лучшие, экспортируйте результат.
+      </p>
+      <div class="actions">
+        <!-- Замените YOUR-USER и YOUR-REPO на имя аккаунта и репозитория -->
+        <a class="btn btn-primary" id="download-link" href="https://github.com/YOUR-USER/YOUR-REPO/releases/latest">
+          Скачать для Windows
+        </a>
+        <a class="btn btn-secondary" href="https://github.com/YOUR-USER/YOUR-REPO">
+          Исходный код
+        </a>
+      </div>
+    </header>
+
+    <section>
+      <h2>Возможности</h2>
+      <div class="card">
+        <ul class="features">
+          <li>Параллельная отправка промта в несколько моделей OpenRouter</li>
+          <li>Улучшение промта с помощью нейросети</li>
+          <li>Сохранение результатов в локальную SQLite-базу</li>
+          <li>Экспорт в Markdown и JSON</li>
+          <li>Тёмная и светлая тема</li>
+          <li>Работает из коробки — без настройки .env у пользователя</li>
+        </ul>
+      </div>
+    </section>
+
+    <section>
+      <h2>Установка</h2>
+      <div class="card">
+        <ol class="steps">
+          <li>Скачайте <strong>ChatList-*-Setup.exe</strong> (установщик) или <strong>chatlist-*.exe</strong> (portable).</li>
+          <li>Запустите программу. Дополнительные файлы не нужны.</li>
+          <li>При первом запуске рядом с exe создаётся папка <code>data\</code> с базой данных.</li>
+        </ol>
+      </div>
+    </section>
+
+    <section>
+      <h2>Требования</h2>
+      <div class="card">
+        <p>Windows 10/11, 64-bit. Подключение к интернету для запросов к нейросетям.</p>
+      </div>
+    </section>
+
+    <section>
+      <h2>Документация</h2>
+      <div class="card">
+        <p>
+          <a href="https://github.com/YOUR-USER/YOUR-REPO/blob/main/README.md">README</a> ·
+          <a href="https://github.com/YOUR-USER/YOUR-REPO/blob/main/docs/PROJECT.md">Описание проекта</a> ·
+          <a href="https://github.com/YOUR-USER/YOUR-REPO/blob/main/docs/PUBLISHING.md">Публикация</a>
+        </p>
+      </div>
+    </section>
+
+    <footer>
+      <p>ChatList · MIT License</p>
+    </footer>
+  </div>
+</body>
+</html>

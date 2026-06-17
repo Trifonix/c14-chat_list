@@ -58,7 +58,8 @@ def load_env(env_path: str | Path | None = None) -> Path | None:
             return path
         return None
 
-    ensure_config_dir()
+    if not is_frozen():
+        ensure_config_dir()
     path = find_env_file()
     if path is not None:
         load_dotenv(path)

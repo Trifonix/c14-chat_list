@@ -12,7 +12,13 @@ _project_root = Path(SPECPATH).parent
 _main_script = str(_project_root / "main.py")
 _src_path = str(_project_root / "src")
 _env_file = _project_root / "config" / ".env"
-_datas = [(str(_env_file), "config")] if _env_file.exists() else []
+_icon_file = _project_root / "app.ico"
+
+_datas = []
+if _env_file.exists():
+    _datas.append((str(_env_file), "config"))
+if _icon_file.exists():
+    _datas.append((str(_icon_file), "."))
 
 block_cipher = None
 
@@ -63,4 +69,5 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+    icon=str(_icon_file) if _icon_file.exists() else None,
 )

@@ -39,6 +39,7 @@ from PyQt6.QtWidgets import (
 )
 
 from about_dialog import AboutDialog
+from paths import app_icon_path
 from app_meta import APP_NAME, APP_VERSION
 from db import AiModel, Database, Prompt, RequestLog, SavedResult, get_database
 from export_utils import export_json, export_markdown
@@ -1123,7 +1124,8 @@ class MainWindow(QMainWindow):
         self.db = db
         self.session = ResultSession()
         self.setWindowTitle(f"{APP_NAME} {APP_VERSION}")
-        self.setWindowIcon(QIcon("app.ico"))
+        icon_path = str(app_icon_path())
+        self.setWindowIcon(QIcon(icon_path))
         self.setMinimumSize(960, 640)
         self.resize(1100, 720)
         self._build_ui()
@@ -1181,8 +1183,9 @@ class MainWindow(QMainWindow):
 def main() -> None:
     setup_logging()
     load_env()
+    icon_path = str(app_icon_path())
     app = QApplication(sys.argv)
-    app.setWindowIcon(QIcon("app.ico"))
+    app.setWindowIcon(QIcon(icon_path))
 
     database = get_database()
     window = MainWindow(database)

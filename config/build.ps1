@@ -1,7 +1,8 @@
 param(
     [switch]$SkipInstaller,
     [switch]$SkipExe,
-    [switch]$SkipPortable
+    [switch]$SkipRelease,
+    [switch]$AllowMissingEnv
 )
 
 $ErrorActionPreference = "Stop"
@@ -35,50 +36,64 @@ function Find-InnoSetupCompiler {
     return $null
 }
 
-function Build-PortablePackage {
+function Build-ReleaseAssets {
     param(
         [string]$Version,
         [string]$ExePath,
+        [string]$InstallerPath,
         [string]$ProjectRoot
     )
 
-    $portableDir = Join-Path $ProjectRoot "dist\ChatList-$Version-portable"
-    $configDir = Join-Path $portableDir "config"
-    $envSrc = Join-Path $ProjectRoot "config\.env"
-    $envExample = Join-Path $ProjectRoot "config\.env.example"
+    $releaseDir = Join-Path $ProjectRoot ("dist\release")
+    $exeName = Split-Path $ExePath -Leaf
+    $portableZip = Join-Path $ProjectRoot ("dist\ChatList-{0}-portable.zip" -f $Version)
 
-    if (Test-Path $portableDir) {
-        Remove-Item $portableDir -Recurse -Force
+    if (Test-Path $releaseDir) {
+        Remove-Item $releaseDir -Recurse -Force
     }
-    New-Item -ItemType Directory -Path $configDir -Force | Out-Null
+    New-Item -ItemType Directory -Path $releaseDir -Force | Out-Null
 
-    Copy-Item $ExePath $portableDir
-    Copy-Item (Join-Path $ProjectRoot "app.ico") $portableDir
-
-    if (Test-Path $envSrc) {
-        Copy-Item $envSrc (Join-Path $configDir ".env")
-        Write-Host "Portable: config\.env included"
-    } elseif (Test-Path $envExample) {
-        Copy-Item $envExample (Join-Path $configDir ".env.example")
-        Write-Warning "config\.env not found — portable folder has .env.example only"
+    Copy-Item $ExePath (Join-Path $releaseDir $exeName)
+    if (Test-Path $InstallerPath) {
+        Copy-Item $InstallerPath $releaseDir
     }
 
-    Write-Host "Portable package: dist\ChatList-$Version-portable\"
+    if (Test-Path $portableZip) {
+        Remove-Item $portableZip -Force
+    }
+    Compress-Archive -Path $ExePath -DestinationPath $portableZip -Force
+
+    $hashLines = @()
+    Get-ChildItem $releaseDir -File | ForEach-Object {
+        $hash = Get-FileHash $_.FullName -Algorithm SHA256
+        $hashLines += ("{0}  {1}" -f $hash.Hash.ToLower(), $_.Name)
+    }
+    $hashLines | Set-Content (Join-Path $releaseDir "SHA256SUMS.txt") -Encoding ASCII
+
+    Write-Host ("Release assets: {0}" -f $releaseDir)
+    Write-Host ("Portable zip: {0}" -f $portableZip)
 }
 
 $Version = Get-AppVersion
 $ExeName = "chatlist-$Version.exe"
-$ExePath = Join-Path $Root "dist\$ExeName"
+$ExePath = Join-Path $Root ("dist\{0}" -f $ExeName)
 $InstallerName = "ChatList-$Version-Setup.exe"
-$InstallerPath = Join-Path $Root "dist\$InstallerName"
+$InstallerPath = Join-Path $Root ("dist\{0}" -f $InstallerName)
 $EnvFile = Join-Path $Root "config\.env"
 
 Write-Host "Building ChatList $Version"
 
 if (-not (Test-Path $EnvFile)) {
-    Write-Warning "config\.env not found."
-    Write-Warning "For out-of-the-box distribution, create config\.env with your API keys before build."
-    Write-Warning "The exe will embed .env only if config\.env exists at build time."
+    if ($AllowMissingEnv) {
+        Write-Warning "config/.env not found - building without embedded API keys."
+    }
+    else {
+        throw @"
+config/.env is required for release build.
+Create config/.env with OPENROUTER_API_KEY before building.
+For local dev builds without keys use: .\config\build.ps1 -AllowMissingEnv
+"@
+    }
 }
 
 if (-not $SkipExe) {
@@ -86,19 +101,19 @@ if (-not $SkipExe) {
     if (-not (Test-Path $ExePath)) {
         throw "Executable not found: $ExePath"
     }
-    Write-Host "Done: dist\$ExeName"
+    Write-Host ("Done: {0}" -f $ExePath)
     if (Test-Path $EnvFile) {
-        Write-Host "Embedded .env in exe (single-file portable works without extra files)"
+        Write-Host "API keys embedded inside exe (user sees only one file)"
     }
-} elseif (-not (Test-Path $ExePath)) {
+}
+elseif (-not (Test-Path $ExePath)) {
     throw "Executable not found: $ExePath. Run build without -SkipExe first."
 }
 
-if (-not $SkipPortable) {
-    Build-PortablePackage -Version $Version -ExePath $ExePath -ProjectRoot $Root
-}
-
 if ($SkipInstaller) {
+    if (-not $SkipRelease) {
+        Build-ReleaseAssets -Version $Version -ExePath $ExePath -InstallerPath $InstallerPath -ProjectRoot $Root
+    }
     return
 }
 
@@ -111,11 +126,15 @@ if (-not $IsccPath) {
     exit 1
 }
 
-Write-Host "Building installer..."
+Write-Host "Building installer (single exe output)..."
 & $IsccPath "/DAppVersion=$Version" (Join-Path $Root "config\chatlist.iss")
 
 if (-not (Test-Path $InstallerPath)) {
     throw "Installer not created: $InstallerPath"
 }
 
-Write-Host "Done: dist\$InstallerName"
+Write-Host ("Done: {0}" -f $InstallerPath)
+
+if (-not $SkipRelease) {
+    Build-ReleaseAssets -Version $Version -ExePath $ExePath -InstallerPath $InstallerPath -ProjectRoot $Root
+}
