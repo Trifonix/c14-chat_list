@@ -1,6 +1,7 @@
 param(
     [switch]$SkipInstaller,
-    [switch]$SkipExe
+    [switch]$SkipExe,
+    [switch]$SkipPortable
 )
 
 $ErrorActionPreference = "Stop"
@@ -34,13 +35,51 @@ function Find-InnoSetupCompiler {
     return $null
 }
 
+function Build-PortablePackage {
+    param(
+        [string]$Version,
+        [string]$ExePath,
+        [string]$ProjectRoot
+    )
+
+    $portableDir = Join-Path $ProjectRoot "dist\ChatList-$Version-portable"
+    $configDir = Join-Path $portableDir "config"
+    $envSrc = Join-Path $ProjectRoot "config\.env"
+    $envExample = Join-Path $ProjectRoot "config\.env.example"
+
+    if (Test-Path $portableDir) {
+        Remove-Item $portableDir -Recurse -Force
+    }
+    New-Item -ItemType Directory -Path $configDir -Force | Out-Null
+
+    Copy-Item $ExePath $portableDir
+    Copy-Item (Join-Path $ProjectRoot "app.ico") $portableDir
+
+    if (Test-Path $envSrc) {
+        Copy-Item $envSrc (Join-Path $configDir ".env")
+        Write-Host "Portable: config\.env included"
+    } elseif (Test-Path $envExample) {
+        Copy-Item $envExample (Join-Path $configDir ".env.example")
+        Write-Warning "config\.env not found — portable folder has .env.example only"
+    }
+
+    Write-Host "Portable package: dist\ChatList-$Version-portable\"
+}
+
 $Version = Get-AppVersion
 $ExeName = "chatlist-$Version.exe"
 $ExePath = Join-Path $Root "dist\$ExeName"
 $InstallerName = "ChatList-$Version-Setup.exe"
 $InstallerPath = Join-Path $Root "dist\$InstallerName"
+$EnvFile = Join-Path $Root "config\.env"
 
 Write-Host "Building ChatList $Version"
+
+if (-not (Test-Path $EnvFile)) {
+    Write-Warning "config\.env not found."
+    Write-Warning "For out-of-the-box distribution, create config\.env with your API keys before build."
+    Write-Warning "The exe will embed .env only if config\.env exists at build time."
+}
 
 if (-not $SkipExe) {
     python -m PyInstaller config/chatlist.spec
@@ -48,8 +87,15 @@ if (-not $SkipExe) {
         throw "Executable not found: $ExePath"
     }
     Write-Host "Done: dist\$ExeName"
+    if (Test-Path $EnvFile) {
+        Write-Host "Embedded .env in exe (single-file portable works without extra files)"
+    }
 } elseif (-not (Test-Path $ExePath)) {
     throw "Executable not found: $ExePath. Run build without -SkipExe first."
+}
+
+if (-not $SkipPortable) {
+    Build-PortablePackage -Version $Version -ExePath $ExePath -ProjectRoot $Root
 }
 
 if ($SkipInstaller) {

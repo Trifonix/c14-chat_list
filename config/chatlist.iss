@@ -38,9 +38,17 @@ Name: "russian"; MessagesFile: "compiler:Languages\Russian.isl"
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
+[Dirs]
+Name: "{app}\data"; Permissions: users-full
+Name: "{app}\config"; Permissions: users-full
+
 [Files]
 Source: "..\dist\{#AppExeName}"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\app.ico"; DestDir: "{app}"; Flags: ignoreversion
+Source: ".env.example"; DestDir: "{app}\config"; DestName: ".env.example"; Flags: ignoreversion
+#ifexist "..\config\.env"
+Source: "..\config\.env"; DestDir: "{app}\config"; DestName: ".env"; Flags: ignoreversion
+#endif
 
 [Icons]
 Name: "{group}\{#AppName}"; Filename: "{app}\{#AppExeName}"; IconFilename: "{app}\app.ico"

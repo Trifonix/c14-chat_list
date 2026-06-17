@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import logging
+import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -24,11 +25,13 @@ from models import (
     build_headers,
     call_model,
     extract_chat_response,
+    find_env_file,
     get_api_key,
+    load_env,
     send_prompt,
 )
 from network import post_json
-from paths import DATA_DIR
+from paths import DATA_DIR, resolve_root_dir
 from prompt_improver import (
     PromptImprovementResult,
     get_improver_model,
@@ -36,6 +39,62 @@ from prompt_improver import (
     parse_improvement_response,
 )
 from session import ResultSession, SessionRow
+
+
+class TestEnvLoading:
+    def test_find_env_file_prefers_config_env(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        config_dir = tmp_path / "config"
+        config_dir.mkdir()
+        env_config = config_dir / ".env"
+        env_root = tmp_path / ".env"
+        env_config.write_text("OPENROUTER_API_KEY=config\n", encoding="utf-8")
+        env_root.write_text("OPENROUTER_API_KEY=root\n", encoding="utf-8")
+
+        monkeypatch.setattr("models.ENV_FILE", env_config)
+        monkeypatch.setattr("models.ROOT_DIR", tmp_path)
+        monkeypatch.setattr("models.bundled_env_file", lambda: None)
+
+        assert find_env_file() == env_config
+
+    def test_find_env_file_uses_bundled_when_no_local(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        bundled = tmp_path / "_MEIPASS" / "config" / ".env"
+        bundled.parent.mkdir(parents=True)
+        bundled.write_text("OPENROUTER_API_KEY=bundled\n", encoding="utf-8")
+
+        monkeypatch.setattr("models.ENV_FILE", tmp_path / "config" / ".env")
+        monkeypatch.setattr("models.ROOT_DIR", tmp_path)
+        monkeypatch.setattr("models.bundled_env_file", lambda: bundled)
+        monkeypatch.setattr("models.is_frozen", lambda: True)
+
+        assert find_env_file() == bundled
+
+    def test_load_env_reads_key(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        env_file = tmp_path / ".env"
+        env_file.write_text("TEST_API_KEY=secret-value\n", encoding="utf-8")
+        monkeypatch.delenv("TEST_API_KEY", raising=False)
+        assert load_env(env_file) == env_file
+        assert get_api_key("TEST_API_KEY") == "secret-value"
+
+
+class TestPaths:
+    def test_resolve_root_dir_dev_points_to_project(self) -> None:
+        root = Path(__file__).resolve().parent.parent
+        assert resolve_root_dir() == root
+
+    def test_resolve_root_dir_frozen_uses_exe_directory(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        fake_exe = tmp_path / "chatlist.exe"
+        fake_exe.write_bytes(b"")
+        monkeypatch.setattr(sys, "frozen", True, raising=False)
+        monkeypatch.setattr(sys, "executable", str(fake_exe))
+        assert resolve_root_dir() == tmp_path
 
 
 class TestDatabase:

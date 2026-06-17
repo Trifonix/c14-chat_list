@@ -43,7 +43,7 @@ from app_meta import APP_NAME, APP_VERSION
 from db import AiModel, Database, Prompt, RequestLog, SavedResult, get_database
 from export_utils import export_json, export_markdown
 from logging_setup import setup_logging
-from models import send_prompt
+from models import load_env, send_prompt
 from prompt_improver import (
     PromptImprovementResult,
     get_improver_model,
@@ -1089,7 +1089,7 @@ class SettingsTab(QWidget):
         self.theme_combo.setCurrentIndex(index if index >= 0 else 0)
         self.font_spin.setValue(int(settings.get("ui_font_size", "10") or 10))
         self.tags_edit.setText(settings.get("default_tags", ""))
-        self.db_path_label.setText(settings.get("db_path", "chatlist.db"))
+        self.db_path_label.setText(str(self.db.db_path))
 
         saved_id = settings.get("prompt_improver_model_id")
         self.improver_model_combo.blockSignals(True)
@@ -1180,6 +1180,7 @@ class MainWindow(QMainWindow):
 
 def main() -> None:
     setup_logging()
+    load_env()
     app = QApplication(sys.argv)
     app.setWindowIcon(QIcon("app.ico"))
 

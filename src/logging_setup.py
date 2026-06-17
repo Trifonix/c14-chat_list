@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 
 from app_meta import APP_NAME, APP_VERSION
-from paths import LOG_FILE, ensure_data_dir
+from paths import DATA_DIR, LOG_FILE, ensure_data_dir
 
 # Re-export for tests.
 __all__ = ["LOG_FILE", "setup_logging"]
@@ -27,4 +27,6 @@ def setup_logging() -> None:
     file_handler.setFormatter(formatter)
     root.addHandler(file_handler)
 
-    logging.getLogger("chatlist").info("%s %s", APP_NAME, APP_VERSION)
+    logging.getLogger("chatlist").info(
+        "%s %s started (data: %s)", APP_NAME, APP_VERSION, DATA_DIR
+    )

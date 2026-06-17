@@ -14,7 +14,7 @@ from dotenv import load_dotenv
 
 from db import AiModel
 from network import post_json
-from paths import CONFIG_DIR, ENV_FILE, ROOT_DIR
+from paths import CONFIG_DIR, ENV_FILE, ROOT_DIR, bundled_env_file, ensure_config_dir, is_frozen
 
 if TYPE_CHECKING:
     from db import Database
@@ -32,15 +32,42 @@ class PromptResponse:
     error: str | None = None
 
 
-def load_env(env_path: str | Path | None = None) -> None:
-    if env_path is not None:
-        load_dotenv(Path(env_path))
-        return
-    for candidate in (ENV_FILE, ROOT_DIR / ".env", Path(".env")):
+def env_file_candidates() -> list[Path]:
+    """Порядок поиска .env: локальный у пользователя, затем встроенный при сборке."""
+    candidates = [ENV_FILE, ROOT_DIR / ".env"]
+    bundled = bundled_env_file()
+    if bundled is not None:
+        candidates.append(bundled)
+    if not is_frozen():
+        candidates.append(Path(".env"))
+    return candidates
+
+
+def find_env_file() -> Path | None:
+    for candidate in env_file_candidates():
         if candidate.exists():
-            load_dotenv(candidate)
-            return
+            return candidate
+    return None
+
+
+def load_env(env_path: str | Path | None = None) -> Path | None:
+    if env_path is not None:
+        path = Path(env_path)
+        if path.exists():
+            load_dotenv(path)
+            return path
+        return None
+
+    ensure_config_dir()
+    path = find_env_file()
+    if path is not None:
+        load_dotenv(path)
+        logger.info("Загружен .env: %s", path)
+        return path
+
     load_dotenv()
+    logger.warning("Файл .env не найден — API-ключи могут отсутствовать")
+    return None
 
 
 def get_api_key(api_id: str) -> str | None:

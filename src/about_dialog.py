@@ -42,14 +42,16 @@ class AboutDialog(QDialog):
         stack.setTextFormat(Qt.TextFormat.RichText)
         layout.addWidget(stack)
 
-        docs_path = (DOCS_DIR / "PROJECT.md").as_uri()
-        docs = QLabel(
-            f'<b>Документация:</b> <a href="{docs_path}">docs/PROJECT.md</a>'
-        )
-        docs.setTextFormat(Qt.TextFormat.RichText)
-        docs.setOpenExternalLinks(True)
-        docs.setWordWrap(True)
-        layout.addWidget(docs)
+        docs_file = DOCS_DIR / "PROJECT.md"
+        if docs_file.exists():
+            docs_path = docs_file.as_uri()
+            docs = QLabel(
+                f'<b>Документация:</b> <a href="{docs_path}">docs/PROJECT.md</a>'
+            )
+            docs.setTextFormat(Qt.TextFormat.RichText)
+            docs.setOpenExternalLinks(True)
+            docs.setWordWrap(True)
+            layout.addWidget(docs)
 
         license_label = QLabel(f"<b>Лицензия:</b> {APP_LICENSE}")
         license_label.setTextFormat(Qt.TextFormat.RichText)
