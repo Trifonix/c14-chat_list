@@ -8,6 +8,10 @@ from load_version import load_version
 
 __version__ = load_version()
 
+_project_root = Path(SPECPATH).parent
+_main_script = str(_project_root / "main.py")
+_src_path = str(_project_root / "src")
+
 block_cipher = None
 
 excludes = [
@@ -23,8 +27,8 @@ excludes = [
 ]
 
 a = Analysis(
-    ['main.py'],
-    pathex=['src'],
+    [_main_script],
+    pathex=[_src_path],
     binaries=[],
     datas=[],
     hiddenimports=['dotenv', 'httpx', 'certifi'],
