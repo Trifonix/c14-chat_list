@@ -1,5 +1,13 @@
 # -*- mode: python ; coding: utf-8 -*-
+import sys
+from pathlib import Path
+
 from PyInstaller.utils.hooks import collect_all
+
+sys.path.insert(0, str(Path(SPECPATH)))
+from load_version import load_version
+
+__version__ = load_version()
 
 datas = []
 binaries = []
@@ -29,7 +37,7 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name='minimal_program',
+    name=f'minimal_program-{__version__}',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

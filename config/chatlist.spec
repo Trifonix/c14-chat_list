@@ -1,5 +1,13 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(SPECPATH)))
+from load_version import load_version
+
+__version__ = load_version()
+
 block_cipher = None
 
 excludes = [
@@ -36,7 +44,7 @@ exe = EXE(
     a.zipfiles,
     a.datas,
     [],
-    name='chatlist',
+    name=f'chatlist-{__version__}',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

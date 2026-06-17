@@ -340,9 +340,10 @@ class TestThemes:
 class TestAppMeta:
     def test_constants(self) -> None:
         from app_meta import APP_NAME, APP_VERSION
+        from version import __version__
 
         assert APP_NAME == "ChatList"
-        assert APP_VERSION
+        assert APP_VERSION == __version__
 
 
 class TestMainGui:
@@ -358,9 +359,10 @@ class TestMainGui:
 
     def test_main_window_construct(self, qapp, temp_db: Database) -> None:
         import main
+        from app_meta import APP_NAME, APP_VERSION
 
         window = main.MainWindow(temp_db)
-        assert window.windowTitle() == "ChatList"
+        assert window.windowTitle() == f"{APP_NAME} {APP_VERSION}"
         window.close()
 
     def test_about_dialog(self, qapp) -> None:

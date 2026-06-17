@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 
+from app_meta import APP_NAME, APP_VERSION
 from paths import LOG_FILE, ensure_data_dir
 
 # Re-export for tests.
@@ -25,3 +26,5 @@ def setup_logging() -> None:
     file_handler = logging.FileHandler(LOG_FILE, encoding="utf-8")
     file_handler.setFormatter(formatter)
     root.addHandler(file_handler)
+
+    logging.getLogger("chatlist").info("%s %s", APP_NAME, APP_VERSION)

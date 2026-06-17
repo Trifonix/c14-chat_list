@@ -8,6 +8,7 @@ from pathlib import Path
 from PyQt6.QtGui import QIcon
 
 ROOT = Path(__file__).resolve().parent
+sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "src"))
 
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
@@ -38,7 +39,7 @@ from PyQt6.QtWidgets import (
 )
 
 from about_dialog import AboutDialog
-from app_meta import APP_NAME
+from app_meta import APP_NAME, APP_VERSION
 from db import AiModel, Database, Prompt, RequestLog, SavedResult, get_database
 from export_utils import export_json, export_markdown
 from logging_setup import setup_logging
@@ -1121,7 +1122,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.db = db
         self.session = ResultSession()
-        self.setWindowTitle(APP_NAME)
+        self.setWindowTitle(f"{APP_NAME} {APP_VERSION}")
         self.setWindowIcon(QIcon("app.ico"))
         self.setMinimumSize(960, 640)
         self.resize(1100, 720)
